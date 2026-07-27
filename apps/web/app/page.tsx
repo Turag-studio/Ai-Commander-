@@ -7,6 +7,7 @@ import { GlassPanel } from "@/components/glass-panel";
 import { StatCard } from "@/components/stat-card";
 import { LiveFeed } from "@/components/live-feed";
 import { CommandConsole } from "@/components/command-console";
+import { SystemPanel } from "@/components/system-panel";
 import { useNotificationStream } from "@/lib/hooks/use-notification-stream";
 
 interface AgentState {
@@ -21,11 +22,19 @@ interface DashboardKpis {
   inventoryAlerts: Array<{ product: string; stock: number; status: string }>;
 }
 
+interface LiveShopify {
+  revenue: number;
+  orderCount: number;
+  averageOrderValue: number;
+  currency: string;
+}
+
 const PULSE_WINDOW_MS = 4000;
 
 export default function MissionControlPage() {
   const [agents, setAgents] = useState<AgentState[]>([]);
   const [kpis, setKpis] = useState<DashboardKpis | null>(null);
+  const [liveShopify, setLiveShopify] = useState<LiveShopify | null>(null);
   const [pulses, setPulses] = useState<BrainPulse[]>([]);
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -45,8 +54,9 @@ export default function MissionControlPage() {
     try {
       const res = await fetch("/api/dashboard", { cache: "no-store" });
       if (res.ok) {
-        const data = (await res.json()) as { dashboard: DashboardKpis };
+        const data = (await res.json()) as { dashboard: DashboardKpis; liveShopify: LiveShopify | null };
         setKpis(data.dashboard);
+        setLiveShopify(data.liveShopify);
       }
     } catch {
       // transient network error — next poll retries
@@ -77,9 +87,12 @@ export default function MissionControlPage() {
       // A notification usually means an agent's status just changed — refresh
       // almost instantly instead of waiting for the next 8s poll.
       if (refetchTimer.current) clearTimeout(refetchTimer.current);
-      refetchTimer.current = setTimeout(fetchAgents, 150);
+      refetchTimer.current = setTimeout(() => {
+        fetchAgents();
+        fetchKpis();
+      }, 150);
     },
-    [fetchAgents]
+    [fetchAgents, fetchKpis]
   );
 
   useNotificationStream(handleNotification);
@@ -89,8 +102,16 @@ export default function MissionControlPage() {
   return (
     <div className="flex h-full flex-col gap-5">
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <StatCard label="Today's Revenue" value={kpis ? `$${kpis.today.revenue.toFixed(2)}` : "—"} accent="cyan" />
-        <StatCard label="Orders Today" value={kpis ? String(kpis.today.orders) : "—"} accent="purple" />
+        <StatCard
+          label={liveShopify ? "Revenue (live)" : "Today's Revenue"}
+          value={liveShopify ? `${liveShopify.currency} ${liveShopify.revenue.toFixed(2)}` : kpis ? `$${kpis.today.revenue.toFixed(2)}` : "—"}
+          accent="cyan"
+        />
+        <StatCard
+          label={liveShopify ? "Orders (live)" : "Orders Today"}
+          value={liveShopify ? String(liveShopify.orderCount) : kpis ? String(kpis.today.orders) : "—"}
+          accent="purple"
+        />
         <StatCard label="ROAS" value={kpis ? `${kpis.roas.toFixed(1)}x` : "—"} accent="green" />
         <StatCard label="Agents Active" value={`${runningCount} / ${agents.length || 11}`} accent={runningCount > 0 ? "amber" : "cyan"} />
       </div>
@@ -99,7 +120,7 @@ export default function MissionControlPage() {
         <GlassPanel className="relative min-h-[420px] overflow-hidden lg:col-span-2">
           <div className="pointer-events-none absolute left-4 top-4 z-10">
             <p className="text-xs uppercase tracking-widest text-neon-cyan/70">Neural Command Center</p>
-            <p className="text-[10px] text-white/30">Drag to rotate · hover a node for detail</p>
+            <p className="text-[10px] text-white/30">Drag to rotate · hover a region for detail</p>
           </div>
           <div className="h-full min-h-[420px] w-full">
             <NeuralBrain
@@ -109,8 +130,11 @@ export default function MissionControlPage() {
           </div>
         </GlassPanel>
 
-        <div className="min-h-[420px]">
-          <LiveFeed />
+        <div className="flex min-h-[420px] flex-col gap-4">
+          <div className="flex-1">
+            <LiveFeed />
+          </div>
+          <SystemPanel />
         </div>
       </div>
 

@@ -6,85 +6,117 @@ AI Commander OS is a futuristic AI operating system that runs an ecommerce busin
 like a company of employees. A central **AI Commander** plans and dispatches work to
 specialized agents — Research, Content, Design, Video, Shopify, Marketplace, Social,
 Analytics, Finance, Support and Memory — and coordinates them from a mission-control
-dashboard built around a living **3D neural brain**: agents render as glowing cortex
-regions connected to a breathing core, with signal pulses traveling the neural
-pathways whenever work is in flight.
+dashboard built around a living **3D neural brain**: each agent renders as a glowing
+anatomical brain region (Research → Frontal Lobe, Content/SEO → Language Area,
+Shopify → Motor Cortex, Memory → Hippocampus, ...) connected to a breathing,
+translucent core, with signal pulses traveling the neural pathways for every order,
+publish, and error in real time.
 
-This repo is the **Phase 1 foundation**: a working agent framework, all eleven
-agents wired end to end, and a full dashboard UI. Every agent runs against real
-external APIs when credentials are configured, and falls back to clearly-labeled
-representative data when they aren't — so `npm run dev` is fully demonstrable with
-zero setup.
+Every agent runs against real external APIs when credentials are configured, and
+falls back to clearly-labeled representative data when they aren't — so `npm run dev`
+is fully demonstrable with zero setup, and goes fully live the moment you run the
+Setup Wizard.
 
 ## Architecture
 
 ```
-packages/core        Agent framework: BaseAgent contract, AgentRegistry, EventBus,
-                      MemoryStore (vector store abstraction), Planner, Commander.
+packages/core        Agent framework: BaseAgent, AgentRegistry, EventBus, Commander,
+                      pluggable Planner, pluggable memory (in-memory / Qdrant),
+                      AI Model Manager (packages/core/src/models).
 packages/agents       The 11 specialized agents, each implementing BaseAgent.
-apps/web              Next.js 14 (App Router) dashboard + API routes.
+apps/web              Next.js 14 (App Router) dashboard, API routes, SSE event stream.
 ```
 
 **Commander → Registry → Agents.** The Commander never talks to an agent directly;
 it dispatches through the `AgentRegistry`, so agents can be added, replaced, or
 hot-swapped without touching the orchestrator or the dashboard. A natural-language
 command becomes a `MissionPlan` (a sequence of agent tasks), which the Commander
-executes step by step, streaming progress onto an `EventBus` that drives the
-dashboard's live notifications and the neural brain's activation state.
+executes step by step, streaming progress onto an `EventBus` — delivered to the
+browser over Server-Sent Events (`/api/events`) — that drives live notifications and
+the neural brain's per-region flashes. Noteworthy output (research, generated copy,
+analytics/finance reports) is automatically written into the Memory Agent as it's
+produced.
 
-**Planner is pluggable.** `HeuristicPlanner` (keyword-based) is the zero-dependency
-default and fully covers the "launch a product end-to-end" workflow from the brief.
-Once `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` is set, implement an `LLMPlanner`
-against the same `Planner` interface (`packages/core/src/planner.ts`) and swap it
-in — nothing else in the system changes.
+**AI Model Manager** (`packages/core/src/models`) centralizes every LLM call behind
+one `ModelManager`. Providers are tried in order — a local **Ollama** instance first
+(free, private; auto-picks whichever of llama3.2/qwen2.5/deepseek-r1/mistral/gemma2/phi3
+is actually installed), then OpenAI, Anthropic and Google as **optional** cloud
+fallback, only used if their API key is set and no local model answered. Availability
+is probed and cached so a cold/offline Ollama doesn't add latency to every request.
+The Research and Content agents use it for real generation and fall back to
+deterministic templates when no model is available anywhere.
 
-**Memory is pluggable.** `InMemoryVectorStore` (naive cosine-similarity search) is
-the zero-dependency default behind the `VectorStore` interface
-(`packages/core/src/memory-store.ts`). Swap in a Qdrant or Chroma-backed
-implementation for production without touching the Memory Agent or callers.
+**Memory is pluggable and persistent.** `InMemoryVectorStore` is the zero-dependency
+default; `QdrantVectorStore` (same `VectorStore` interface) is used automatically the
+moment `QDRANT_URL` is reachable, embedding text via a local Ollama embedding model
+when available or a dependency-free hash embedding otherwise — either way semantic
+search keeps working with zero paid dependencies.
 
-**Every agent degrades gracefully.** Each agent checks for its own credentials
-(Shopify Admin API, marketplace keys, social tokens, analytics providers) and
-returns `mocked: true` with representative data when they're absent, or makes the
-real API call when they're present. The dashboard surfaces this via the `mocked`
-flag and inline banners — nothing pretends to be live when it isn't.
+**Every agent degrades gracefully.** Each agent checks its own credentials (Shopify
+Admin API, marketplace keys, social tokens, local image-gen/background-removal
+services, AI providers) and returns `mocked: true` with representative data when
+they're absent, or makes the real call when present. The dashboard surfaces this via
+the `mocked` flag and inline banners — nothing pretends to be live when it isn't.
 
 ## The Neural Brain UI
 
 Mission Control's centerpiece is a React Three Fiber scene
-(`apps/web/components/neural-brain/`): a breathing icosahedron core (the
-Commander) surrounded by cortex nodes — one per agent, positioned on a Fibonacci
-sphere — connected by neural pathway lines. When an agent is `running` its
-pathway animates a traveling pulse and the node lit-pulses; `completed` /
-`error` / `idle` map to green / red / dim-cyan per the brand palette. A
-`Sparkles` particle field gives the "floating digital dust" atmosphere and
+(`apps/web/components/neural-brain/`): a breathing, noise-displaced organic core
+(the Commander) with a translucent tissue shell and inner glow halo, surrounded by
+cortex nodes — one per agent, positioned on a Fibonacci sphere and labeled with its
+anatomical region — connected by neural pathway lines. Each region has a signature
+color from the neural palette (`lib/cortex.ts`); `running` pulses the node and
+animates a traveling particle along its synapse; any live event (a new order, a
+completed publish, an error) fires an independent transient flash — layered on top
+of the resting state — that travels from the core out to the responsible region and
+back, so the brain visibly reacts to real activity, not just agent status. A
+`Sparkles` particle field gives the floating-dust atmosphere and
 `@react-three/postprocessing`'s `Bloom` produces the neon glow. Hovering a node
-reveals its live status and last summary via an in-scene HTML tooltip; drag to
-orbit.
+reveals its live status and last summary; drag to orbit. (True photoreal anatomical
+tissue — the reference video's benchmark — needs a sculpted mesh and a subsurface
+shader beyond what a dependency-free real-time scene can approximate; this is the
+honest, practical ceiling for a self-contained React Three Fiber scene.)
 
-The rest of the dashboard (Agents, Tasks, Products, Orders, Analytics,
-Marketing, Media Library, Reports, Notifications, Memory, Automation,
-Marketplace, Logs, Terminal, API Keys, Settings) uses the same dark
-glassmorphism/cyberpunk language — translucent panels, neon accents, a subtle
-grid background — without the 3D canvas, since a live data table is more usable
-as a table than as a brain region.
+The rest of the dashboard (Agents, Tasks, Products, Orders, Analytics, Marketing,
+Media Library, Reports, Notifications, Memory, Automation, Marketplace, Logs,
+Terminal, API Keys, Setup Wizard, Settings) uses the same dark glassmorphism/
+cyberpunk language — translucent panels, neon accents, a subtle grid background —
+without the 3D canvas, since a live data table is more usable as a table than as a
+brain region.
 
 ## Getting started
 
+The fastest path is the in-app **Setup Wizard** (`/setup`): enter your Shopify store
+domain, admin access token, and public domain name, and everything else — the
+Commander, agents, memory, the AI Model Manager — configures itself automatically.
+Values are written to a gitignored `.data/runtime-config.json` and applied
+immediately, no restart required.
+
 ```bash
 npm install
-cp .env.example .env.local   # apps/web reads apps/web/.env.local
-npm run dev                  # http://localhost:3000
+npm run dev                  # http://localhost:3000, zero config needed to explore
 ```
 
-Nothing in `.env.example` is required to run the dashboard — every integration
-is optional and agents fall back to mock data. Fill in what you have:
+Or configure via environment instead of the wizard:
 
-- `SHOPIFY_STORE_DOMAIN` / `SHOPIFY_ADMIN_ACCESS_TOKEN` → live Shopify Agent
-- `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` → real copy generation (once an
-  `LLMPlanner`/LLM-backed Content Agent call is wired in)
-- Marketplace / social / analytics keys → per-channel live status on the
-  Marketplace and API Keys pages
+```bash
+cp .env.example apps/web/.env.local   # fill in what you have
+npm run dev
+```
+
+Nothing in `.env.example` is required — every integration is optional and agents
+fall back to mock data. Highlights:
+
+- `SHOPIFY_STORE_DOMAIN` / `SHOPIFY_ADMIN_ACCESS_TOKEN` / `DOMAIN_NAME` → live
+  Shopify Agent (products, orders, customers, collections, inventory, create/
+  update/publish, live revenue analytics) and inbound webhooks at
+  `/api/webhooks/shopify` (register them with the `shopify.register_webhooks` task)
+- `OLLAMA_BASE_URL` → local, free AI generation for Research and Content agents
+  (no key needed — just run Ollama); `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` /
+  `GOOGLE_AI_API_KEY` are optional cloud fallback
+- `QDRANT_URL` → persistent memory instead of the in-memory default
+- `IMAGE_GEN_API_URL` (Automatic1111/ComfyUI-compatible) / `BACKGROUND_REMOVAL_API_URL`
+  → real image generation and background removal in the Design Agent
 
 ### Useful scripts
 
@@ -97,7 +129,8 @@ npm run lint          # apps/web ESLint
 
 ### Sending a mission
 
-From the terminal, the Mission Control command console, or directly:
+From the terminal, the Mission Control command console, the topbar's global
+"Ask AI Commander anything" bar, or directly:
 
 ```bash
 curl -X POST http://localhost:3000/api/commander/command \
@@ -106,28 +139,32 @@ curl -X POST http://localhost:3000/api/commander/command \
 ```
 
 This dispatches Research → Content → Design → Video → Shopify → Marketplace →
-Social → Analytics in sequence and returns a full `MissionReport`.
+Social → Analytics in sequence and returns a full `MissionReport`. Progress streams
+live over SSE to every open dashboard tab.
 
 ## Coding standards
 
 TypeScript everywhere, strict mode on. Agents are modular and stateless between
 tasks; new agents implement `BaseAgent` and register in
 `packages/agents/src/index.ts` — no core changes required. No hardcoded
-secrets: every integration reads from `process.env`, documented in
-`.env.example`. Dark mode and responsive layout throughout.
+secrets: every integration reads from `process.env` (directly, or via the Setup
+Wizard's runtime config layered on top of it), documented in `.env.example`. Dark
+mode and responsive layout throughout.
 
 ## Roadmap
 
-**Phase 1 — this repo.** Core agent framework, all 11 agents, Shopify Admin API
-integration, full mission-control dashboard with the neural brain visualization.
+**Phase 1 — this repo.** Core agent framework, all 11 agents, live Shopify Admin
+API integration with webhooks, AI Model Manager (local-first), persistent Qdrant
+memory, Setup Wizard, real system health, and the full neural-brain dashboard.
 
-**Phase 2.** Live marketplace publishing (Amazon SP-API, Flipkart, Meesho,
-Etsy), real UGC/video rendering, social auto-posting (Meta/Pinterest/YouTube
-Graph APIs), LLM-backed Content/Research agents.
+**Phase 2.** Live marketplace publishing (Amazon SP-API, Flipkart, Meesho, Etsy),
+real UGC/video rendering, social auto-posting (Meta/Pinterest/YouTube Graph APIs),
+object storage for generated media (Cloudflare R2/S3) instead of inline base64.
 
-**Phase 3.** Customer Support Agent wired to a real inbox, Finance Agent wired
-to accounting data, persistent Postgres/Supabase storage + Redis task queue,
-Qdrant/Chroma-backed Memory Agent.
+**Phase 3.** Customer Support Agent wired to a real inbox, Finance Agent wired to
+accounting data, persistent Postgres/Supabase storage + Redis task queue,
+role-based auth (Clerk/Supabase Auth/BetterAuth).
 
-**Phase 4.** Voice-controlled Commander, autonomous optimization loops,
-predictive analytics, multi-store/multi-company management.
+**Phase 4.** Voice-controlled Commander, autonomous optimization loops, predictive
+analytics, multi-store/multi-company management, sculpted/shader-based photoreal
+brain rendering.

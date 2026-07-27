@@ -21,5 +21,6 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/logs", label: "Logs", icon: "▥" },
   { href: "/terminal", label: "Terminal", icon: "❯" },
   { href: "/api-keys", label: "API Keys", icon: "⚿" },
+  { href: "/setup", label: "Setup Wizard", icon: "✧" },
   { href: "/settings", label: "Settings", icon: "⚙" },
 ];
