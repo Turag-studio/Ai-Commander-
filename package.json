@@ -1,0 +1,20 @@
+{
+  "name": "ai-commander-os",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Commander OS - One AI Team. Complete Ecommerce Automation.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=apps/web",
+    "start": "npm run start --workspace=apps/web",
+    "lint": "npm run lint --workspace=apps/web",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
