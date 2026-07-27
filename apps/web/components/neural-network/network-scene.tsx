@@ -62,6 +62,29 @@ function fibonacciSphere(count: number, radius: number): THREE.Vector3[] {
   return points;
 }
 
+/** A jagged, lightning-like polyline between two points instead of a smooth line — the long spokes reaching out to each cluster should read as electric branches, not clean cables. */
+function buildJaggedPath(a: THREE.Vector3, b: THREE.Vector3, seed: number, segments = 5, jitter = 0.22): THREE.Vector3[] {
+  const rand = mulberry32(seed);
+  const dir = b.clone().sub(a);
+  const length = dir.length() || 1;
+  const up = Math.abs(dir.y) < length * 0.99 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+  const perp1 = new THREE.Vector3().crossVectors(dir, up).normalize();
+  const perp2 = new THREE.Vector3().crossVectors(dir, perp1).normalize();
+
+  const points: THREE.Vector3[] = [];
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const point = a.clone().lerp(b, t);
+    if (i > 0 && i < segments) {
+      const falloff = Math.sin(t * Math.PI);
+      point.addScaledVector(perp1, (rand() - 0.5) * jitter * length * falloff);
+      point.addScaledVector(perp2, (rand() - 0.5) * jitter * length * falloff);
+    }
+    points.push(point);
+  }
+  return points;
+}
+
 /** A dense cloud of node positions filling a sphere around a cluster anchor — deterministic per seed so it's stable across re-renders. */
 function buildClusterNodes(anchor: THREE.Vector3, count: number, radius: number, seed: number): THREE.Vector3[] {
   const rand = mulberry32(seed);
@@ -124,14 +147,16 @@ function CommanderCore({ processing, pulse }: { processing: boolean; pulse?: Bra
         <meshBasicMaterial ref={materialRef} color="#00eaff" wireframe toneMapped={false} />
       </mesh>
       <mesh>
-        <sphereGeometry args={[0.28, 16, 16]} />
+        <sphereGeometry args={[0.36, 16, 16]} />
         <meshBasicMaterial color="#ffffff" toneMapped={false} />
       </mesh>
       <mesh ref={glowRef}>
         <sphereGeometry args={[0.5, 16, 16]} />
         <meshBasicMaterial color="#00d4ff" transparent opacity={0.1} toneMapped={false} />
       </mesh>
-      <pointLight color={pulse ? SEVERITY_COLOR[pulse.severity] : "#00d4ff"} intensity={processing ? 13 : 9} distance={18} />
+      {/* Tight shimmering burst right at the core, distinct from the ambient background particle fields */}
+      <Sparkles count={150} scale={[2.4, 2.4, 2.4]} size={3} speed={1.2} color="#ffffff" opacity={0.85} />
+      <pointLight color={pulse ? SEVERITY_COLOR[pulse.severity] : "#00d4ff"} intensity={processing ? 17 : 12} distance={20} />
     </group>
   );
 }
@@ -145,17 +170,22 @@ function NetworkEdges({ core, clusters }: { core: THREE.Vector3; clusters: Clust
       positions.push(a.x, a.y, a.z, b.x, b.y, b.z);
       colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
     };
+    const addJaggedEdge = (a: THREE.Vector3, b: THREE.Vector3, color: THREE.Color, seed: number) => {
+      const path = buildJaggedPath(a, b, seed, 5, 0.22);
+      for (let i = 0; i < path.length - 1; i++) addEdge(path[i], path[i + 1], color);
+    };
 
-    for (const cluster of clusters) {
+    clusters.forEach((cluster, clusterIndex) => {
       const color = new THREE.Color(cluster.color);
-      addEdge(core, cluster.anchor, color);
+      // The long branch reaching out to each cluster reads as an electric lightning bolt.
+      addJaggedEdge(core, cluster.anchor, color, clusterIndex + 1);
       const n = cluster.positions.length;
       const chord = Math.floor(n / 3);
       for (let i = 0; i < n; i++) {
         addEdge(cluster.positions[i], cluster.positions[(i + 1) % n], color);
         if (i % 5 === 0) addEdge(cluster.positions[i], cluster.positions[(i + chord) % n], color);
       }
-    }
+    });
 
     const geom = new THREE.BufferGeometry();
     geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
@@ -167,7 +197,7 @@ function NetworkEdges({ core, clusters }: { core: THREE.Vector3; clusters: Clust
 
   return (
     <lineSegments geometry={geometry}>
-      <lineBasicMaterial vertexColors transparent opacity={0.2} toneMapped={false} />
+      <lineBasicMaterial vertexColors transparent opacity={0.32} toneMapped={false} />
     </lineSegments>
   );
 }
@@ -378,7 +408,7 @@ function PostFX() {
   if (!supported) return null;
   return (
     <EffectComposer>
-      <Bloom intensity={1.1} luminanceThreshold={0.1} luminanceSmoothing={0.85} mipmapBlur />
+      <Bloom intensity={1.35} luminanceThreshold={0.08} luminanceSmoothing={0.8} mipmapBlur />
     </EffectComposer>
   );
 }
