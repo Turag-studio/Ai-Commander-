@@ -12,3 +12,4 @@ npm-debug.log*
 .turbo/
 coverage/
 *.tsbuildinfo
+.data/

@@ -11,7 +11,7 @@ interface DesignOutput {
 }
 
 export default async function MediaPage() {
-  const { registry } = getOrchestrator();
+  const { registry } = await getOrchestrator();
   const result = await registry.dispatch("design", {
     id: `media_${Date.now()}`,
     type: "design.generate_product_images",

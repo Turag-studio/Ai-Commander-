@@ -11,8 +11,8 @@ const severityColor: Record<string, string> = {
   critical: "border-neon-red/40 text-neon-red",
 };
 
-export default function NotificationsPage() {
-  const { eventBus } = getOrchestrator();
+export default async function NotificationsPage() {
+  const { eventBus } = await getOrchestrator();
   const notifications = eventBus.getHistory(100);
 
   return (

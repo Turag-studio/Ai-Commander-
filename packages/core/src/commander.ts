@@ -2,7 +2,10 @@ import type { AgentRegistry } from "./agent-registry";
 import type { EventBus } from "./event-bus";
 import type { Planner } from "./planner";
 import { HeuristicPlanner } from "./planner";
-import type { AgentTaskResult, MissionReport } from "./types";
+import type { AgentId, AgentTaskResult, MissionReport } from "./types";
+
+/** Agent output worth remembering long-term (research history, generated copy, business reports). */
+const MEMORABLE_AGENTS: AgentId[] = ["research", "content", "analytics", "finance"];
 
 export interface CommanderOptions {
   registry: AgentRegistry;
@@ -55,6 +58,7 @@ export class Commander {
 
       if (result.status === "success") {
         this.eventBus.success(`${step.agentId} completed`, result.summary, step.agentId);
+        await this.rememberIfNoteworthy(step.agentId, result, missionId);
       } else {
         this.eventBus.critical(`${step.agentId} failed`, result.summary, step.agentId);
       }
@@ -90,5 +94,23 @@ export class Commander {
 
   getMissionHistory(limit = 20): MissionReport[] {
     return this.missions.slice(0, limit);
+  }
+
+  /** Writes noteworthy agent output into the Memory Agent so it's searchable later (research history, generated copy, reports). */
+  private async rememberIfNoteworthy(agentId: AgentId, result: AgentTaskResult, missionId: string): Promise<void> {
+    if (!MEMORABLE_AGENTS.includes(agentId) || !this.registry.has("memory")) return;
+    try {
+      await this.registry.dispatch("memory", {
+        id: `${result.taskId}_memory`,
+        type: "memory.store",
+        payload: {
+          namespace: agentId,
+          text: `${result.summary}\n\n${JSON.stringify(result.output)}`,
+          metadata: { missionId, taskId: result.taskId, storedAt: new Date().toISOString() },
+        },
+      });
+    } catch {
+      // memory storage is best-effort — never let it fail a mission
+    }
   }
 }

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CommanderNotification } from "@ai-commander/core";
 import { PageHeader } from "@/components/page-header";
 import { GlassPanel } from "@/components/glass-panel";
+import { useNotificationStream } from "@/lib/hooks/use-notification-stream";
 
 const levelColor: Record<string, string> = {
   info: "text-neon-cyan",
@@ -12,25 +13,20 @@ const levelColor: Record<string, string> = {
   critical: "text-neon-red",
 };
 
+const MAX_LOGS = 300;
+
 export default function LogsPage() {
   const [logs, setLogs] = useState<CommanderNotification[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function poll() {
-      const res = await fetch("/api/notifications", { cache: "no-store" });
-      if (!res.ok || cancelled) return;
-      const data = (await res.json()) as { notifications: CommanderNotification[] };
-      if (!cancelled) setLogs([...data.notifications].reverse());
-    }
-    poll();
-    const interval = setInterval(poll, 4000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
+  const handleNotification = useCallback((notification: CommanderNotification) => {
+    setLogs((prev) => {
+      if (prev.some((n) => n.id === notification.id)) return prev;
+      return [...prev, notification].slice(-MAX_LOGS);
+    });
   }, []);
+
+  useNotificationStream(handleNotification);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -38,7 +34,7 @@ export default function LogsPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Logs" subtitle="Raw system log stream." />
+      <PageHeader title="Logs" subtitle="Live system log stream — every agent event, streamed instantly via SSE." />
       <GlassPanel className="flex-1 overflow-y-auto font-mono text-xs">
         {logs.map((log) => (
           <div key={log.id} className="py-0.5">

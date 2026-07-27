@@ -6,7 +6,7 @@ import { StatCard } from "@/components/stat-card";
 export const dynamic = "force-dynamic";
 
 export default async function ProductsPage() {
-  const { registry } = getOrchestrator();
+  const { registry } = await getOrchestrator();
   const result = await registry.dispatch("shopify", {
     id: `products_${Date.now()}`,
     type: "shopify.sync_store",

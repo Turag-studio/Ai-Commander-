@@ -18,7 +18,7 @@ interface AnalyticsOutput {
 }
 
 export default async function AnalyticsPage() {
-  const { registry } = getOrchestrator();
+  const { registry } = await getOrchestrator();
   const result = await registry.dispatch("analytics", {
     id: `analytics_${Date.now()}`,
     type: "analytics.daily_report",

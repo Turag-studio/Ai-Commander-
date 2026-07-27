@@ -9,7 +9,7 @@ interface SocialSchedule {
 }
 
 export default async function MarketingPage() {
-  const { registry } = getOrchestrator();
+  const { registry } = await getOrchestrator();
   const result = await registry.dispatch("social", {
     id: `marketing_${Date.now()}`,
     type: "social.schedule_launch_posts",

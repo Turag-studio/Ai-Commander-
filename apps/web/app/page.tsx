@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { AgentDescriptor, AgentStatus } from "@ai-commander/core";
-import { NeuralBrain } from "@/components/neural-brain";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { AgentDescriptor, AgentStatus, CommanderNotification } from "@ai-commander/core";
+import { NeuralBrain, type BrainPulse } from "@/components/neural-brain";
 import { GlassPanel } from "@/components/glass-panel";
 import { StatCard } from "@/components/stat-card";
 import { LiveFeed } from "@/components/live-feed";
 import { CommandConsole } from "@/components/command-console";
+import { useNotificationStream } from "@/lib/hooks/use-notification-stream";
 
 interface AgentState {
   descriptor: AgentDescriptor;
@@ -20,39 +21,68 @@ interface DashboardKpis {
   inventoryAlerts: Array<{ product: string; stock: number; status: string }>;
 }
 
+const PULSE_WINDOW_MS = 4000;
+
 export default function MissionControlPage() {
   const [agents, setAgents] = useState<AgentState[]>([]);
   const [kpis, setKpis] = useState<DashboardKpis | null>(null);
+  const [pulses, setPulses] = useState<BrainPulse[]>([]);
+  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchAgents = useCallback(async () => {
+    try {
+      const res = await fetch("/api/agents", { cache: "no-store" });
+      if (res.ok) {
+        const data = (await res.json()) as { agents: AgentState[] };
+        setAgents(data.agents);
+      }
+    } catch {
+      // transient network error — next poll retries
+    }
+  }, []);
+
+  const fetchKpis = useCallback(async () => {
+    try {
+      const res = await fetch("/api/dashboard", { cache: "no-store" });
+      if (res.ok) {
+        const data = (await res.json()) as { dashboard: DashboardKpis };
+        setKpis(data.dashboard);
+      }
+    } catch {
+      // transient network error — next poll retries
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    fetchAgents();
+    fetchKpis();
+    const interval = setInterval(() => {
+      fetchAgents();
+      fetchKpis();
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [fetchAgents, fetchKpis]);
 
-    async function poll() {
-      try {
-        const [agentsRes, kpiRes] = await Promise.all([
-          fetch("/api/agents", { cache: "no-store" }),
-          fetch("/api/dashboard", { cache: "no-store" }),
-        ]);
-        if (!cancelled && agentsRes.ok) {
-          const data = (await agentsRes.json()) as { agents: AgentState[] };
-          setAgents(data.agents);
-        }
-        if (!cancelled && kpiRes.ok) {
-          const data = (await kpiRes.json()) as { dashboard: DashboardKpis };
-          setKpis(data.dashboard);
-        }
-      } catch {
-        // transient network error — next poll retries
-      }
-    }
+  const handleNotification = useCallback(
+    (notification: CommanderNotification) => {
+      setPulses((prev) => {
+        const now = Date.now();
+        const next = [
+          ...prev.filter((p) => now - p.receivedAt < PULSE_WINDOW_MS),
+          { id: notification.id, agentId: notification.agentId, severity: notification.severity, receivedAt: now },
+        ];
+        return next.slice(-30);
+      });
 
-    poll();
-    const interval = setInterval(poll, 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
+      // A notification usually means an agent's status just changed — refresh
+      // almost instantly instead of waiting for the next 8s poll.
+      if (refetchTimer.current) clearTimeout(refetchTimer.current);
+      refetchTimer.current = setTimeout(fetchAgents, 150);
+    },
+    [fetchAgents]
+  );
+
+  useNotificationStream(handleNotification);
 
   const runningCount = agents.filter((a) => a.status === "running").length;
 
@@ -72,7 +102,10 @@ export default function MissionControlPage() {
             <p className="text-[10px] text-white/30">Drag to rotate · hover a node for detail</p>
           </div>
           <div className="h-full min-h-[420px] w-full">
-            <NeuralBrain agents={agents.map((a) => ({ descriptor: a.descriptor, status: a.status, lastSummary: a.lastSummary }))} />
+            <NeuralBrain
+              agents={agents.map((a) => ({ descriptor: a.descriptor, status: a.status, lastSummary: a.lastSummary }))}
+              pulses={pulses}
+            />
           </div>
         </GlassPanel>
 
@@ -81,7 +114,7 @@ export default function MissionControlPage() {
         </div>
       </div>
 
-      <CommandConsole />
+      <CommandConsole onMissionComplete={fetchAgents} />
     </div>
   );
 }

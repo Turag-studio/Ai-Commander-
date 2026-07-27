@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import type { BrainAgentState } from "./brain-scene";
+import type { BrainAgentState, BrainPulse } from "./brain-scene";
 
 const BrainScene = dynamic(() => import("./brain-scene").then((mod) => mod.BrainScene), {
   ssr: false,
@@ -12,12 +12,12 @@ const BrainScene = dynamic(() => import("./brain-scene").then((mod) => mod.Brain
   ),
 });
 
-export function NeuralBrain({ agents }: { agents: BrainAgentState[] }) {
+export function NeuralBrain({ agents, pulses }: { agents: BrainAgentState[]; pulses?: BrainPulse[] }) {
   return (
     <div className="relative h-full w-full">
-      <BrainScene agents={agents} />
+      <BrainScene agents={agents} pulses={pulses} />
     </div>
   );
 }
 
-export type { BrainAgentState } from "./brain-scene";
+export type { BrainAgentState, BrainPulse } from "./brain-scene";

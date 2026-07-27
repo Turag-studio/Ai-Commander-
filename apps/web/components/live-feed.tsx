@@ -1,7 +1,8 @@
 "use client";
 
 import type { CommanderNotification, NotificationSeverity } from "@ai-commander/core";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useNotificationStream } from "@/lib/hooks/use-notification-stream";
 import { GlassPanel } from "./glass-panel";
 
 const severityColor: Record<NotificationSeverity, string> = {
@@ -11,30 +12,19 @@ const severityColor: Record<NotificationSeverity, string> = {
   critical: "border-neon-red/40 text-neon-red",
 };
 
+const MAX_VISIBLE = 40;
+
 export function LiveFeed() {
   const [notifications, setNotifications] = useState<CommanderNotification[]>([]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function poll() {
-      try {
-        const res = await fetch("/api/notifications", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as { notifications: CommanderNotification[] };
-        if (!cancelled) setNotifications(data.notifications);
-      } catch {
-        // network hiccup — next poll will retry
-      }
-    }
-
-    poll();
-    const interval = setInterval(poll, 4000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
+  const handleNotification = useCallback((notification: CommanderNotification) => {
+    setNotifications((prev) => {
+      if (prev.some((n) => n.id === notification.id)) return prev;
+      return [notification, ...prev].slice(0, MAX_VISIBLE);
+    });
   }, []);
+
+  useNotificationStream(handleNotification);
 
   return (
     <GlassPanel className="flex h-full flex-col">

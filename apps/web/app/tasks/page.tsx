@@ -4,8 +4,8 @@ import { GlassPanel } from "@/components/glass-panel";
 
 export const dynamic = "force-dynamic";
 
-export default function TasksPage() {
-  const { commander } = getOrchestrator();
+export default async function TasksPage() {
+  const { commander } = await getOrchestrator();
   const missions = commander.getMissionHistory();
 
   return (

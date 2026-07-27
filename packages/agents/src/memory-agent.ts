@@ -37,11 +37,23 @@ export class MemoryAgent extends BaseAgent {
     if (task.type === "memory.store") {
       const namespace = String(task.payload.namespace ?? "general");
       const text = String(task.payload.text ?? "");
-      const record = await this.store.upsert({ namespace, text, metadata: task.payload.metadata as Record<string, unknown> ?? {} });
+      const record = await this.store.upsert({ namespace, text, metadata: (task.payload.metadata as Record<string, unknown>) ?? {} });
       return {
         summary: `Stored a new memory in namespace "${namespace}".`,
         output: { record },
         logs: [`Upserted memory ${record.id}`],
+        mocked: false,
+      };
+    }
+
+    if (task.type === "memory.list") {
+      const namespace = String(task.payload.namespace ?? "general");
+      const records = await this.store.list(namespace);
+      const sorted = [...records].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return {
+        summary: `${sorted.length} memories stored in "${namespace}".`,
+        output: { namespace, records: sorted },
+        logs: [`Listed namespace "${namespace}"`],
         mocked: false,
       };
     }

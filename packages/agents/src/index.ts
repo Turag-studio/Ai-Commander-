@@ -1,4 +1,4 @@
-import { AgentRegistry } from "@ai-commander/core";
+import { AgentRegistry, type ModelManager, type VectorStore } from "@ai-commander/core";
 import { ResearchAgent } from "./research-agent";
 import { ContentAgent } from "./content-agent";
 import { DesignAgent } from "./design-agent";
@@ -23,11 +23,18 @@ export * from "./finance-agent";
 export * from "./support-agent";
 export * from "./memory-agent";
 
+export interface RegistryOptions {
+  /** Powers model-backed generation in Content and Research agents; falls back to templates when omitted. */
+  modelManager?: ModelManager;
+  /** Backing store for the Memory Agent; defaults to the in-memory vector store when omitted. */
+  memoryStore?: VectorStore;
+}
+
 /** Builds an AgentRegistry with every specialized agent registered — the full company roster. */
-export function createDefaultRegistry(): AgentRegistry {
+export function createDefaultRegistry(options: RegistryOptions = {}): AgentRegistry {
   const registry = new AgentRegistry();
-  registry.register(new ResearchAgent());
-  registry.register(new ContentAgent());
+  registry.register(new ResearchAgent(options.modelManager));
+  registry.register(new ContentAgent(options.modelManager));
   registry.register(new DesignAgent());
   registry.register(new VideoAgent());
   registry.register(new ShopifyAgent());
@@ -36,6 +43,6 @@ export function createDefaultRegistry(): AgentRegistry {
   registry.register(new AnalyticsAgent());
   registry.register(new FinanceAgent());
   registry.register(new SupportAgent());
-  registry.register(new MemoryAgent());
+  registry.register(new MemoryAgent(options.memoryStore));
   return registry;
 }

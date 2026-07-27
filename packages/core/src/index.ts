@@ -3,5 +3,8 @@ export * from "./base-agent";
 export * from "./event-bus";
 export * from "./agent-registry";
 export * from "./memory-store";
+export * from "./embedder";
+export * from "./qdrant-store";
 export * from "./planner";
 export * from "./commander";
+export * from "./models";

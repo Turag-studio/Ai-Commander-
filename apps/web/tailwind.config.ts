@@ -7,17 +7,20 @@ const config: Config = {
     extend: {
       colors: {
         void: {
-          950: "#050608",
-          900: "#0a0d12",
-          800: "#10141b",
-          700: "#161b25",
+          950: "#0a0b0f",
+          900: "#0d0f16",
+          800: "#12141d",
+          700: "#181b27",
         },
         neon: {
-          cyan: "#00f6ff",
-          purple: "#a855f7",
-          magenta: "#ff2fd0",
-          green: "#39ff88",
+          cyan: "#00d4ff",
+          blue: "#00d4ff",
+          purple: "#8a2be2",
+          magenta: "#ff00a6",
+          pink: "#ff00a6",
+          green: "#00ff9d",
           amber: "#ffb020",
+          yellow: "#ffd700",
           red: "#ff3b5c",
         },
       },

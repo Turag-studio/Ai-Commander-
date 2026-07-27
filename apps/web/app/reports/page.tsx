@@ -17,7 +17,7 @@ interface FinanceOutput {
 }
 
 export default async function ReportsPage() {
-  const { registry } = getOrchestrator();
+  const { registry } = await getOrchestrator();
   const result = await registry.dispatch("finance", {
     id: `reports_${Date.now()}`,
     type: "finance.monthly_report",

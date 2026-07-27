@@ -9,12 +9,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A command is required" }, { status: 400 });
   }
 
-  const { commander } = getOrchestrator();
+  const { commander } = await getOrchestrator();
   const report = await commander.runCommand(command);
   return NextResponse.json({ report });
 }
 
 export async function GET() {
-  const { commander } = getOrchestrator();
+  const { commander } = await getOrchestrator();
   return NextResponse.json({ missions: commander.getMissionHistory() });
 }

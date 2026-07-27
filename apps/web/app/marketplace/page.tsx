@@ -9,7 +9,7 @@ interface MarketplaceOutput {
 }
 
 export default async function MarketplacePage() {
-  const { registry } = getOrchestrator();
+  const { registry } = await getOrchestrator();
   const result = await registry.dispatch("marketplace", {
     id: `marketplace_${Date.now()}`,
     type: "marketplace.sync_listing",
