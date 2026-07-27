@@ -1,27 +1,26 @@
 import type { AgentId } from "@ai-commander/core";
 
 /**
- * Maps each backend agent to an anatomical brain region for the Neural
- * Brain visualization, per the reference brief (Research → Frontal Lobe,
- * SEO/Content → Language Area, Shopify → Motor Cortex, Memory →
- * Hippocampus, ...).
+ * Maps each backend agent to its display name in the Neural Network
+ * visualization — plain functional names (Research Cluster, SEO Cluster,
+ * ...), not anatomical brain regions.
  */
 export const CORTEX_LABEL: Record<AgentId, string> = {
-  commander: "Brainstem — Commander Core",
-  research: "Frontal Lobe",
-  content: "Language Area",
-  design: "Parietal Area",
-  video: "Temporal Area",
-  shopify: "Motor Cortex",
-  marketplace: "Basal Ganglia",
-  social: "Limbic Area",
-  analytics: "Occipital Cortex",
-  finance: "Insular Cortex",
-  support: "Cerebellum",
-  memory: "Hippocampus",
+  commander: "Commander Core",
+  research: "Research Cluster",
+  content: "SEO Cluster",
+  design: "Design Cluster",
+  video: "Video Cluster",
+  shopify: "Shopify Cluster",
+  marketplace: "Marketplace Cluster",
+  social: "Marketing Cluster",
+  analytics: "Analytics Cluster",
+  finance: "Finance Cluster",
+  support: "Support Cluster",
+  memory: "Memory Cluster",
 };
 
-/** Neural color palette — each region gets a signature hue so the brain reads as distinct functional areas, not one uniform glow. */
+/** Neural color palette — each cluster gets a signature hue so the network reads as distinct functional areas, not one uniform glow. */
 export const NEURAL_PALETTE = {
   blue: "#00d4ff",
   cyan: "#00ffff",

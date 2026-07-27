@@ -6,11 +6,13 @@ AI Commander OS is a futuristic AI operating system that runs an ecommerce busin
 like a company of employees. A central **AI Commander** plans and dispatches work to
 specialized agents — Research, Content, Design, Video, Shopify, Marketplace, Social,
 Analytics, Finance, Support and Memory — and coordinates them from a mission-control
-dashboard built around a living **3D neural brain**: each agent renders as a glowing
-anatomical brain region (Research → Frontal Lobe, Content/SEO → Language Area,
-Shopify → Motor Cortex, Memory → Hippocampus, ...) connected to a breathing,
-translucent core, with signal pulses traveling the neural pathways for every order,
-publish, and error in real time.
+dashboard built around a living **3D neural network**: a glowing Commander Core at
+the center, with each agent rendered as its own cluster of hundreds of interconnected
+nodes (Research Cluster, SEO Cluster, Shopify Cluster, Memory Cluster, ...) radiating
+outward, connected by a dense mesh of glowing pathways. Real business events — a new
+order, a completed publish, an error — travel through the network as bright pulses in
+real time, so the interface visibly reacts to what the business is actually doing
+instead of just displaying numbers.
 
 Every agent runs against real external APIs when credentials are configured, and
 falls back to clearly-labeled representative data when they aren't — so `npm run dev`
@@ -33,7 +35,7 @@ hot-swapped without touching the orchestrator or the dashboard. A natural-langua
 command becomes a `MissionPlan` (a sequence of agent tasks), which the Commander
 executes step by step, streaming progress onto an `EventBus` — delivered to the
 browser over Server-Sent Events (`/api/events`) — that drives live notifications and
-the neural brain's per-region flashes. Noteworthy output (research, generated copy,
+the neural network's per-cluster pulses. Noteworthy output (research, generated copy,
 analytics/finance reports) is automatically written into the Memory Agent as it's
 produced.
 
@@ -58,31 +60,32 @@ services, AI providers) and returns `mocked: true` with representative data when
 they're absent, or makes the real call when present. The dashboard surfaces this via
 the `mocked` flag and inline banners — nothing pretends to be live when it isn't.
 
-## The Neural Brain UI
+## The Neural Network UI
 
 Mission Control's centerpiece is a React Three Fiber scene
-(`apps/web/components/neural-brain/`): a breathing, noise-displaced organic core
-(the Commander) with a translucent tissue shell and inner glow halo, surrounded by
-cortex nodes — one per agent, positioned on a Fibonacci sphere and labeled with its
-anatomical region — connected by neural pathway lines. Each region has a signature
-color from the neural palette (`lib/cortex.ts`); `running` pulses the node and
-animates a traveling particle along its synapse; any live event (a new order, a
-completed publish, an error) fires an independent transient flash — layered on top
-of the resting state — that travels from the core out to the responsible region and
-back, so the brain visibly reacts to real activity, not just agent status. A
-`Sparkles` particle field gives the floating-dust atmosphere and
-`@react-three/postprocessing`'s `Bloom` produces the neon glow. Hovering a node
-reveals its live status and last summary; drag to orbit. (True photoreal anatomical
-tissue — the reference video's benchmark — needs a sculpted mesh and a subsurface
-shader beyond what a dependency-free real-time scene can approximate; this is the
-honest, practical ceiling for a self-contained React Three Fiber scene.)
+(`apps/web/components/neural-network/`) — a living network, not a literal brain
+model. A small glowing **Commander Core** sits at the center; every task begins and
+ends there. Around it, each of the 11 agents gets its own **cluster** of ~70
+instanced nodes scattered in a sphere, all tied together by a single static mesh of
+glowing edges (core→cluster spokes plus intra-cluster links) built once into one
+draw call for performance. Node clusters and connections are colored per agent from
+a shared neural palette (`lib/cortex.ts`). While an agent is `running`, its cluster
+nodes pulse and a particle continuously travels its spoke; any live event (a new
+order, a completed publish, an error) additionally fires a one-shot bright pulse
+that travels core→cluster in real time, independent of the resting animation — so
+the network visibly reacts to what's actually happening, not just to agent status.
+Three layered `Sparkles` fields (blue/purple/pink) plus exponential fog give the
+deep-space atmosphere, and `@react-three/postprocessing`'s `Bloom` produces the glow
+(automatically disabled on detected software/low-end WebGL renderers, where it
+silently blanks the canvas instead of erroring — see `usePostProcessingSupported` in
+`network-scene.tsx`). Hovering a cluster reveals its live status and last summary;
+drag to orbit, auto-rotate keeps it moving even when idle.
 
 The rest of the dashboard (Agents, Tasks, Products, Orders, Analytics, Marketing,
 Media Library, Reports, Notifications, Memory, Automation, Marketplace, Logs,
-Terminal, API Keys, Setup Wizard, Settings) uses the same dark glassmorphism/
-cyberpunk language — translucent panels, neon accents, a subtle grid background —
-without the 3D canvas, since a live data table is more usable as a table than as a
-brain region.
+Terminal, API Keys, Setup Wizard, Settings) uses the same dark glass-panel language
+— translucent panels, neon accents, a subtle grid background — without the 3D
+canvas, since a live data table is more usable as a table than as a network cluster.
 
 ## Getting started
 
@@ -155,7 +158,7 @@ mode and responsive layout throughout.
 
 **Phase 1 — this repo.** Core agent framework, all 11 agents, live Shopify Admin
 API integration with webhooks, AI Model Manager (local-first), persistent Qdrant
-memory, Setup Wizard, real system health, and the full neural-brain dashboard.
+memory, Setup Wizard, real system health, and the full neural-network dashboard.
 
 **Phase 2.** Live marketplace publishing (Amazon SP-API, Flipkart, Meesho, Etsy),
 real UGC/video rendering, social auto-posting (Meta/Pinterest/YouTube Graph APIs),
@@ -166,5 +169,5 @@ accounting data, persistent Postgres/Supabase storage + Redis task queue,
 role-based auth (Clerk/Supabase Auth/BetterAuth).
 
 **Phase 4.** Voice-controlled Commander, autonomous optimization loops, predictive
-analytics, multi-store/multi-company management, sculpted/shader-based photoreal
-brain rendering.
+analytics, multi-store/multi-company management, GPU particle systems and custom
+GLSL shaders for denser, more cinematic network motion.
