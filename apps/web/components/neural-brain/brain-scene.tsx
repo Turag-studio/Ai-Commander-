@@ -1,9 +1,9 @@
 "use client";
 
 import { Html, Line, OrbitControls, Sparkles } from "@react-three/drei";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Bloom, EffectComposer } from "@react-three/postprocessing";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { AgentDescriptor, AgentId, AgentStatus, NotificationSeverity } from "@ai-commander/core";
 import { CORTEX_COLOR, CORTEX_LABEL } from "@/lib/cortex";
@@ -35,6 +35,41 @@ const NODE_ORBIT_RADIUS = 3.8;
 const NODE_FLASH_MS = 1200;
 const CORE_FLASH_MS = 1800;
 const EVENT_TRAVEL_MS = 900;
+
+/** Deterministic PRNG so jagged synapse paths stay stable across re-renders instead of flickering. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0 || 1;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** A jagged, lightning-like polyline between two points instead of a smooth line — reads as an electric neural thread. */
+function buildJaggedPath(from: THREE.Vector3, to: THREE.Vector3, seed: number, segments = 6, jitter = 0.16): THREE.Vector3[] {
+  const rand = mulberry32(seed);
+  const dir = to.clone().sub(from);
+  const length = dir.length() || 1;
+  const up = Math.abs(dir.y) < length * 0.99 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+  const perp1 = new THREE.Vector3().crossVectors(dir, up).normalize();
+  const perp2 = new THREE.Vector3().crossVectors(dir, perp1).normalize();
+
+  const points: THREE.Vector3[] = [];
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const point = from.clone().lerp(to, t);
+    if (i > 0 && i < segments) {
+      const falloff = Math.sin(t * Math.PI); // taper jitter toward the endpoints
+      point.addScaledVector(perp1, (rand() - 0.5) * jitter * length * falloff);
+      point.addScaledVector(perp2, (rand() - 0.5) * jitter * length * falloff);
+    }
+    points.push(point);
+  }
+  return points;
+}
 
 /** Evenly distributes N points on a sphere shell (Fibonacci sphere). */
 function fibonacciSphere(count: number, radius: number): THREE.Vector3[] {
@@ -79,8 +114,11 @@ function BrainCore({ pulse, processing }: { pulse?: BrainPulse; processing: bool
   const meshRef = useRef<THREE.Mesh>(null);
   const glowRef = useRef<THREE.Mesh>(null);
   const wireRef = useRef<THREE.Mesh>(null);
+  const flareRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<THREE.MeshStandardMaterial>(null);
+  const flareMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
   const baseColor = useMemo(() => new THREE.Color("#00c8ff"), []);
+  const flareColor = useMemo(() => new THREE.Color("#ffffff"), []);
   const outerGeometry = useMemo(() => createOrganicBrainGeometry(CORE_RADIUS, 5), []);
   const glowGeometry = useMemo(() => createOrganicBrainGeometry(CORE_RADIUS * 1.18, 3), []);
 
@@ -103,20 +141,35 @@ function BrainCore({ pulse, processing }: { pulse?: BrainPulse; processing: bool
       wireRef.current.rotation.y = -t * 0.04;
       wireRef.current.rotation.x = Math.sin(t * 0.2) * 0.08;
     }
+
+    let flash = 0;
+    if (pulse) {
+      const age = Date.now() - pulse.receivedAt;
+      if (age < CORE_FLASH_MS) flash = 1 - age / CORE_FLASH_MS;
+    }
+
     if (materialRef.current) {
-      let flash = 0;
-      if (pulse) {
-        const age = Date.now() - pulse.receivedAt;
-        if (age < CORE_FLASH_MS) flash = 1 - age / CORE_FLASH_MS;
-      }
       const targetColor = pulse ? new THREE.Color(SEVERITY_COLOR[pulse.severity]) : baseColor;
       materialRef.current.emissive.lerpColors(baseColor, targetColor, flash);
       materialRef.current.emissiveIntensity = 0.85 + flash * 1.8 + (processing ? 0.35 : 0);
+    }
+
+    // A white-hot flare at the very center — the "energy burst" the core is always mid-way through.
+    if (flareRef.current && flareMaterialRef.current) {
+      const burst = processing ? 1 + Math.sin(t * 8) * 0.35 : 1 + Math.sin(t * 1.5) * 0.12;
+      flareRef.current.scale.setScalar(burst * (1 + flash * 0.6));
+      const targetColor = pulse ? new THREE.Color(SEVERITY_COLOR[pulse.severity]) : flareColor;
+      flareMaterialRef.current.color.lerpColors(flareColor, targetColor, flash * 0.7);
     }
   });
 
   return (
     <group>
+      {/* White-hot flare at the exact center */}
+      <mesh ref={flareRef}>
+        <sphereGeometry args={[CORE_RADIUS * 0.32, 16, 16]} />
+        <meshBasicMaterial ref={flareMaterialRef} color="#ffffff" transparent opacity={0.9} toneMapped={false} />
+      </mesh>
       {/* Translucent "tissue" shell */}
       <mesh ref={meshRef} geometry={outerGeometry}>
         <meshStandardMaterial
@@ -140,7 +193,7 @@ function BrainCore({ pulse, processing }: { pulse?: BrainPulse; processing: bool
         <icosahedronGeometry args={[CORE_RADIUS * 0.94, 2]} />
         <meshBasicMaterial color={processing ? "#ffffff" : "#00ffff"} wireframe transparent opacity={processing ? 0.45 : 0.28} />
       </mesh>
-      <pointLight color={pulse ? SEVERITY_COLOR[pulse.severity] : "#00d4ff"} intensity={7} distance={13} />
+      <pointLight color={pulse ? SEVERITY_COLOR[pulse.severity] : "#00d4ff"} intensity={processing ? 11 : 8} distance={14} />
     </group>
   );
 }
@@ -186,6 +239,16 @@ function CortexNode({ agent, position, pulse }: { agent: BrainAgentState; positi
         <sphereGeometry args={[0.22, 16, 16]} />
         <meshStandardMaterial ref={materialRef} color={regionColor} emissive={regionColor} emissiveIntensity={1.4} toneMapped={false} />
       </mesh>
+      {!hovered && (
+        <Html distanceFactor={9} center occlude={false}>
+          <div
+            className="pointer-events-none whitespace-nowrap rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-wider backdrop-blur-sm"
+            style={{ borderColor: `${regionColor}55`, color: `${regionColor}cc`, background: "rgba(5,6,8,0.45)" }}
+          >
+            {CORTEX_LABEL[agent.descriptor.id]}
+          </div>
+        </Html>
+      )}
       {hovered && (
         <Html distanceFactor={8} center>
           <div className="pointer-events-none w-48 rounded-lg border border-neon-cyan/30 bg-void-950/90 px-3 py-2 text-center shadow-glow backdrop-blur">
@@ -200,10 +263,24 @@ function CortexNode({ agent, position, pulse }: { agent: BrainAgentState; positi
   );
 }
 
-function Synapse({ from, to, active, color, pulse }: { from: THREE.Vector3; to: THREE.Vector3; active: boolean; color: string; pulse?: BrainPulse }) {
+function Synapse({
+  from,
+  to,
+  active,
+  color,
+  pulse,
+  seed,
+}: {
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  active: boolean;
+  color: string;
+  pulse?: BrainPulse;
+  seed: number;
+}) {
   const particleRef = useRef<THREE.Mesh>(null);
   const eventParticleRef = useRef<THREE.Mesh>(null);
-  const points = useMemo(() => [from, to], [from, to]);
+  const points = useMemo(() => buildJaggedPath(from, to, seed), [from, to, seed]);
 
   useFrame(({ clock }) => {
     if (particleRef.current) {
@@ -278,6 +355,7 @@ function BrainSystem({ agents, pulses }: { agents: BrainAgentState[]; pulses: Br
           active={agent.status === "running"}
           color={CORTEX_COLOR[agent.descriptor.id]}
           pulse={pulseByAgent.get(agent.descriptor.id)}
+          seed={i + 1}
         />
       ))}
       {agents.map((agent, i) => (
@@ -287,18 +365,56 @@ function BrainSystem({ agents, pulses }: { agents: BrainAgentState[]; pulses: Br
   );
 }
 
+const SOFTWARE_RENDERER_SIGNATURES = ["swiftshader", "llvmpipe", "software", "softpipe", "basic render", "microsoft basic"];
+
+/**
+ * @react-three/postprocessing's Bloom renders as a blank canvas under
+ * software WebGL (SwiftShader/llvmpipe — confirmed by disabling it and
+ * comparing renders) instead of erroring, so there's nothing to catch.
+ * Detecting the renderer once and skipping post-processing on a software
+ * fallback keeps the scene visible everywhere; hardware-accelerated
+ * browsers (the overwhelming majority of users) get the full bloom glow.
+ */
+function usePostProcessingSupported(): boolean {
+  const { gl } = useThree();
+  const [supported, setSupported] = useState(true);
+
+  useEffect(() => {
+    try {
+      const context = gl.getContext();
+      const debugInfo = context.getExtension("WEBGL_debug_renderer_info");
+      const renderer = debugInfo ? String(context.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)).toLowerCase() : "";
+      if (SOFTWARE_RENDERER_SIGNATURES.some((sig) => renderer.includes(sig))) {
+        setSupported(false);
+      }
+    } catch {
+      // if detection itself fails, err on the side of keeping the effect on
+    }
+  }, [gl]);
+
+  return supported;
+}
+
+function PostFX() {
+  const supported = usePostProcessingSupported();
+  if (!supported) return null;
+  return (
+    <EffectComposer>
+      <Bloom intensity={0.95} luminanceThreshold={0.12} luminanceSmoothing={0.9} mipmapBlur />
+    </EffectComposer>
+  );
+}
+
 export function BrainScene({ agents, pulses = [] }: { agents: BrainAgentState[]; pulses?: BrainPulse[] }) {
   return (
-    <Canvas camera={{ position: [0, 1.5, 9 ], fov: 45 }} dpr={[1, 1.5]}>
+    <Canvas camera={{ position: [0, 1.5, 9], fov: 45 }} dpr={[1, 1.5]}>
       <ambientLight intensity={0.15} color="#5ad6ff" />
       <Sparkles count={180} scale={[15, 9, 15]} size={2} speed={0.25} color="#00d4ff" opacity={0.5} />
       <Sparkles count={80} scale={[17, 11, 17]} size={1.5} speed={0.15} color="#8a2be2" opacity={0.35} />
       <Sparkles count={40} scale={[16, 10, 16]} size={1.2} speed={0.1} color="#ff00a6" opacity={0.25} />
       <BrainSystem agents={agents} pulses={pulses} />
       <OrbitControls enablePan={false} minDistance={5} maxDistance={15} autoRotate autoRotateSpeed={0.35} />
-      <EffectComposer>
-        <Bloom intensity={0.95} luminanceThreshold={0.12} luminanceSmoothing={0.9} mipmapBlur />
-      </EffectComposer>
+      <PostFX />
     </Canvas>
   );
 }
