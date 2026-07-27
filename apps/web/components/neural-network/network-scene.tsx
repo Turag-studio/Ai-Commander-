@@ -154,6 +154,11 @@ function CommanderCore({ processing, pulse }: { processing: boolean; pulse?: Bra
         <sphereGeometry args={[0.5, 16, 16]} />
         <meshBasicMaterial color="#00d4ff" transparent opacity={0.1} toneMapped={false} />
       </mesh>
+      {/* Vertical light beam through the core — bloom smears it into a bright streak from any angle */}
+      <mesh>
+        <cylinderGeometry args={[0.025, 0.025, 2.6, 6]} />
+        <meshBasicMaterial color="#e8fbff" transparent opacity={0.55} toneMapped={false} />
+      </mesh>
       {/* Tight shimmering burst right at the core, distinct from the ambient background particle fields */}
       <Sparkles count={150} scale={[2.4, 2.4, 2.4]} size={3} speed={1.2} color="#ffffff" opacity={0.85} />
       <pointLight color={pulse ? SEVERITY_COLOR[pulse.severity] : "#00d4ff"} intensity={processing ? 17 : 12} distance={20} />
@@ -199,6 +204,75 @@ function NetworkEdges({ core, clusters }: { core: THREE.Vector3; clusters: Clust
     <lineSegments geometry={geometry}>
       <lineBasicMaterial vertexColors transparent opacity={0.32} toneMapped={false} />
     </lineSegments>
+  );
+}
+
+const STARBURST_RAY_COUNT = 44;
+const STARBURST_MIN_RADIUS = 7.5;
+const STARBURST_MAX_RADIUS = 13.5;
+
+/**
+ * Dozens of fine rays shooting from the core out past the clusters to the
+ * edge of the scene, each carrying a traveling spark — the signature
+ * "energy explosion" read from the reference footage, distinct from the
+ * core→cluster spokes which stop at each cluster.
+ */
+function Starburst({ core }: { core: THREE.Vector3 }) {
+  const rayEnds = useMemo(() => {
+    const rand = mulberry32(777);
+    const ends: THREE.Vector3[] = [];
+    for (let i = 0; i < STARBURST_RAY_COUNT; i++) {
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const r = STARBURST_MIN_RADIUS + rand() * (STARBURST_MAX_RADIUS - STARBURST_MIN_RADIUS);
+      ends.push(new THREE.Vector3(Math.sin(phi) * Math.cos(theta), Math.sin(phi) * Math.sin(theta), Math.cos(phi)).multiplyScalar(r));
+    }
+    return ends;
+  }, []);
+
+  const geometry = useMemo(() => {
+    const positions: number[] = [];
+    rayEnds.forEach((end, i) => {
+      const path = buildJaggedPath(core, end, i + 500, 3, 0.06);
+      for (let s = 0; s < path.length - 1; s++) {
+        positions.push(path[s].x, path[s].y, path[s].z, path[s + 1].x, path[s + 1].y, path[s + 1].z);
+      }
+    });
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    return geom;
+  }, [core, rayEnds]);
+
+  useEffect(() => () => geometry.dispose(), [geometry]);
+
+  const sparkRef = useRef<THREE.InstancedMesh>(null);
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+  const phases = useMemo(() => rayEnds.map((_, i) => (i * 0.6180339887) % 1), [rayEnds]);
+
+  useFrame(({ clock }) => {
+    if (!sparkRef.current) return;
+    const t = clock.getElapsedTime();
+    for (let i = 0; i < rayEnds.length; i++) {
+      const progress = (t * 0.22 + phases[i]) % 1;
+      dummy.position.lerpVectors(core, rayEnds[i], progress);
+      const fade = progress < 0.12 ? progress / 0.12 : progress > 0.8 ? (1 - progress) / 0.2 : 1;
+      dummy.scale.setScalar(Math.max(0.001, fade));
+      dummy.updateMatrix();
+      sparkRef.current.setMatrixAt(i, dummy.matrix);
+    }
+    sparkRef.current.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <group>
+      <lineSegments geometry={geometry}>
+        <lineBasicMaterial color="#bfe9ff" transparent opacity={0.16} toneMapped={false} />
+      </lineSegments>
+      <instancedMesh ref={sparkRef} args={[undefined, undefined, rayEnds.length]}>
+        <sphereGeometry args={[0.055, 6, 6]} />
+        <meshBasicMaterial color="#ffffff" toneMapped={false} />
+      </instancedMesh>
+    </group>
   );
 }
 
@@ -351,6 +425,7 @@ function NetworkSystem({ agents, pulses }: { agents: BrainAgentState[]; pulses: 
   return (
     <group ref={groupRef}>
       <CommanderCore processing={processing} pulse={pulseByAgent.get("commander")} />
+      <Starburst core={core} />
       <NetworkEdges core={core} clusters={clusters} />
       {clusters.map((cluster, i) => (
         <ClusterNodes
@@ -415,14 +490,14 @@ function PostFX() {
 
 export function BrainScene({ agents, pulses = [] }: { agents: BrainAgentState[]; pulses?: BrainPulse[] }) {
   return (
-    <Canvas camera={{ position: [0, 1.8, 13], fov: 50 }} dpr={[1, 1.5]}>
+    <Canvas camera={{ position: [0, 2, 16], fov: 50 }} dpr={[1, 1.5]}>
       <fogExp2 attach="fog" args={["#05060a", 0.028]} />
       <ambientLight intensity={0.12} color="#5ad6ff" />
       <Sparkles count={700} scale={[26, 16, 26]} size={1.4} speed={0.2} color="#00d4ff" opacity={0.45} />
       <Sparkles count={500} scale={[28, 18, 28]} size={1.1} speed={0.12} color="#8a2be2" opacity={0.3} />
       <Sparkles count={300} scale={[24, 15, 24]} size={1} speed={0.15} color="#ff00a6" opacity={0.22} />
       <NetworkSystem agents={agents} pulses={pulses} />
-      <OrbitControls enablePan={false} minDistance={7} maxDistance={22} autoRotate autoRotateSpeed={0.3} />
+      <OrbitControls enablePan={false} minDistance={8} maxDistance={26} autoRotate autoRotateSpeed={0.3} />
       <PostFX />
     </Canvas>
   );
