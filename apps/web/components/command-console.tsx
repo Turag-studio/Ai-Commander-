@@ -57,7 +57,7 @@ export function CommandConsole({ onMissionComplete }: { onMissionComplete?: (rep
           value={command}
           onChange={(e) => setCommand(e.target.value)}
           placeholder="e.g. Launch a new product end-to-end"
-          className="flex-1 rounded-md border border-neon-cyan/20 bg-void-900/80 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-neon-cyan/60 focus:outline-none focus:ring-1 focus:ring-neon-cyan/40"
+          className="flex-1 rounded-md border border-neon-cyan/20 bg-void-900/80 px-3 py-2 text-sm text-white placeholder:text-white/30 transition-shadow focus:border-neon-cyan/60 focus:shadow-glow focus:outline-none focus:ring-1 focus:ring-neon-cyan/40"
         />
         <button
           type="submit"

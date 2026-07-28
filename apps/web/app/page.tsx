@@ -194,7 +194,7 @@ export default function MissionControlPage() {
             </div>
           </GlassPanel>
 
-          <GlassPanel className="flex min-h-0 flex-1 flex-col">
+          <GlassPanel className="flex min-h-[120px] flex-1 flex-col">
             <p className="mb-2 shrink-0 text-[10px] uppercase tracking-widest text-white/40">Cluster Status</p>
             <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
               {agents.map((a) => (
@@ -208,16 +208,16 @@ export default function MissionControlPage() {
               ))}
             </div>
           </GlassPanel>
-        </div>
 
-        {/* Live feed + system health — bounded bottom-left column, capped so it never overlaps the top bar */}
-        <div className="pointer-events-auto absolute bottom-4 left-4 z-20 flex max-h-[420px] w-72 flex-col gap-3">
-          <div className="min-h-0 flex-1">
-            <LiveFeed />
-          </div>
+          {/* Model status / CPU / memory — bottom-right, per the reference HUD layout */}
           <div className="shrink-0">
             <SystemPanel />
           </div>
+        </div>
+
+        {/* Live feed / console logs — bounded bottom-left column, capped so it never overlaps the top bar */}
+        <div className="pointer-events-auto absolute bottom-4 left-4 top-16 z-20 w-72">
+          <LiveFeed />
         </div>
       </div>
 

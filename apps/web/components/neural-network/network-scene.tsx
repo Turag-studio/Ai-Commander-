@@ -1,12 +1,13 @@
 "use client";
 
-import { Html, OrbitControls, Sparkles } from "@react-three/drei";
+import { Html, Line, OrbitControls, Sparkles } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Bloom, EffectComposer } from "@react-three/postprocessing";
+import { Bloom, ChromaticAberration, EffectComposer, Noise, Vignette } from "@react-three/postprocessing";
+import { BlendFunction } from "postprocessing";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { AgentDescriptor, AgentId, AgentStatus, NotificationSeverity } from "@ai-commander/core";
-import { CORTEX_COLOR, CORTEX_LABEL } from "@/lib/cortex";
+import { CORTEX_COLOR, CORTEX_LABEL, CORTEX_REGION_LABEL } from "@/lib/cortex";
 
 export interface BrainAgentState {
   descriptor: AgentDescriptor;
@@ -196,7 +197,7 @@ function CommanderCore({ processing, pulse }: { processing: boolean; pulse?: Bra
       </mesh>
       {/* Vertical light beam through the core — bloom smears it into a bright streak from any angle */}
       <mesh>
-        <cylinderGeometry args={[0.025, 0.025, 2.6, 6]} />
+        <cylinderGeometry args={[0.025, 0.025, 2.6, 16]} />
         <meshBasicMaterial color="#e8fbff" transparent opacity={0.55} toneMapped={false} />
       </mesh>
       {/* Tight shimmering burst right at the core, distinct from the ambient background particle fields */}
@@ -252,7 +253,39 @@ function ThinkingWaves({ processing }: { processing: boolean }) {
   );
 }
 
-/** One static draw call for every connection in the network: core→cluster spokes plus a mesh of links within each cluster. */
+/**
+ * One jagged core→cluster spoke rendered as a real fat line (drei's Line —
+ * backed by Line2/meshline, so it has genuine pixel width, unlike raw
+ * lineBasicMaterial which caps at ~1px in WebGL) with a slow electric
+ * flicker so it reads as a live lightning bolt, not a static cable.
+ */
+function ClusterSpoke({ core, anchor, color, seed }: { core: THREE.Vector3; anchor: THREE.Vector3; color: string; seed: number }) {
+  const points = useMemo(() => buildJaggedPath(core, anchor, seed, 6, 0.3).map((p) => p.toArray() as [number, number, number]), [core, anchor, seed]);
+  // drei's <Line> forwards its ref to the underlying Line2 primitive, whose `.material` (a LineMaterial) is what actually holds opacity.
+  const lineRef = useRef<{ material: THREE.Material & { opacity: number } } | null>(null);
+  const flickerSeed = useMemo(() => seed * 12.9898, [seed]);
+
+  useFrame(({ clock }) => {
+    if (!lineRef.current) return;
+    const t = clock.getElapsedTime();
+    const flicker = 0.75 + 0.25 * Math.sin(t * 9 + flickerSeed) * Math.sin(t * 3.3 + flickerSeed * 1.7);
+    lineRef.current.material.opacity = 0.5 * flicker;
+  });
+
+  return (
+    <Line
+      ref={lineRef as never}
+      points={points}
+      color={color}
+      lineWidth={2.2}
+      transparent
+      opacity={0.5}
+      toneMapped={false}
+    />
+  );
+}
+
+/** The dense mesh of links inside each cluster — hundreds of short chords, still merged into one draw call since individual fat lines would be too costly at that count. */
 function NetworkEdges({ core, clusters }: { core: THREE.Vector3; clusters: ClusterData[] }) {
   const geometry = useMemo(() => {
     const positions: number[] = [];
@@ -261,15 +294,9 @@ function NetworkEdges({ core, clusters }: { core: THREE.Vector3; clusters: Clust
       positions.push(a.x, a.y, a.z, b.x, b.y, b.z);
       colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
     };
-    const addJaggedEdge = (a: THREE.Vector3, b: THREE.Vector3, color: THREE.Color, seed: number) => {
-      const path = buildJaggedPath(a, b, seed, 5, 0.22);
-      for (let i = 0; i < path.length - 1; i++) addEdge(path[i], path[i + 1], color);
-    };
 
-    clusters.forEach((cluster, clusterIndex) => {
+    clusters.forEach((cluster) => {
       const color = new THREE.Color(cluster.color);
-      // The long branch reaching out to each cluster reads as an electric lightning bolt.
-      addJaggedEdge(core, cluster.anchor, color, clusterIndex + 1);
       // Dense, chaotic web of crossing links inside each cluster — several offset "chords"
       // per node, not just a ring, so it reads as a busy plexus rather than a clean loop.
       const n = cluster.positions.length;
@@ -287,14 +314,19 @@ function NetworkEdges({ core, clusters }: { core: THREE.Vector3; clusters: Clust
     geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
     geom.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
     return geom;
-  }, [core, clusters]);
+  }, [clusters]);
 
   useEffect(() => () => geometry.dispose(), [geometry]);
 
   return (
-    <lineSegments geometry={geometry}>
-      <lineBasicMaterial vertexColors transparent opacity={0.32} toneMapped={false} />
-    </lineSegments>
+    <group>
+      <lineSegments geometry={geometry}>
+        <lineBasicMaterial vertexColors transparent opacity={0.32} toneMapped={false} />
+      </lineSegments>
+      {clusters.map((cluster, i) => (
+        <ClusterSpoke key={cluster.agentId} core={core} anchor={cluster.anchor} color={cluster.color} seed={i + 1} />
+      ))}
+    </group>
   );
 }
 
@@ -308,6 +340,21 @@ const STARBURST_MAX_RADIUS = 9.5;
  * "energy explosion" read from the reference footage, distinct from the
  * core→cluster spokes which stop at each cluster.
  */
+/** One outward ray rendered as a real fat line with its own slow electric flicker, so the starburst reads as dozens of independent bolts instead of one static mesh. */
+function StarburstRay({ points, seed }: { points: [number, number, number][]; seed: number }) {
+  const lineRef = useRef<{ material: THREE.Material & { opacity: number } } | null>(null);
+  const flickerSeed = useMemo(() => seed * 7.1897, [seed]);
+
+  useFrame(({ clock }) => {
+    if (!lineRef.current) return;
+    const t = clock.getElapsedTime();
+    const flicker = 0.55 + 0.45 * Math.sin(t * 6 + flickerSeed) * Math.sin(t * 1.8 + flickerSeed * 1.4);
+    lineRef.current.material.opacity = 0.3 * Math.max(0, flicker);
+  });
+
+  return <Line ref={lineRef as never} points={points} color="#bfe9ff" lineWidth={1.4} transparent opacity={0.3} toneMapped={false} />;
+}
+
 function Starburst({ core }: { core: THREE.Vector3 }) {
   const rayEnds = useMemo(() => {
     const rand = mulberry32(777);
@@ -321,20 +368,12 @@ function Starburst({ core }: { core: THREE.Vector3 }) {
     return ends;
   }, []);
 
-  const geometry = useMemo(() => {
-    const positions: number[] = [];
-    rayEnds.forEach((end, i) => {
-      const path = buildJaggedPath(core, end, i + 500, 3, 0.06);
-      for (let s = 0; s < path.length - 1; s++) {
-        positions.push(path[s].x, path[s].y, path[s].z, path[s + 1].x, path[s + 1].y, path[s + 1].z);
-      }
-    });
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    return geom;
-  }, [core, rayEnds]);
-
-  useEffect(() => () => geometry.dispose(), [geometry]);
+  // Sharper zigzag (more segments, wider jitter) than a subtle scratch — this is the
+  // signature "lightning ray" read, so each bolt needs a visible jagged silhouette.
+  const rayPaths = useMemo(
+    () => rayEnds.map((end, i) => buildJaggedPath(core, end, i + 500, 6, 0.16).map((p) => p.toArray() as [number, number, number])),
+    [core, rayEnds]
+  );
 
   const sparkRef = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
@@ -356,11 +395,11 @@ function Starburst({ core }: { core: THREE.Vector3 }) {
 
   return (
     <group>
-      <lineSegments geometry={geometry}>
-        <lineBasicMaterial color="#bfe9ff" transparent opacity={0.16} toneMapped={false} />
-      </lineSegments>
+      {rayPaths.map((points, i) => (
+        <StarburstRay key={i} points={points} seed={i} />
+      ))}
       <instancedMesh ref={sparkRef} args={[undefined, undefined, rayEnds.length]}>
-        <sphereGeometry args={[0.055, 6, 6]} />
+        <sphereGeometry args={[0.055, 8, 8]} />
         <meshBasicMaterial color="#ffffff" toneMapped={false} />
       </instancedMesh>
     </group>
@@ -395,7 +434,7 @@ function ClusterNodes({ positions, color, active, pulse }: { positions: THREE.Ve
 
   return (
     <instancedMesh ref={meshRef} args={[undefined, undefined, positions.length]}>
-      <sphereGeometry args={[0.045, 6, 6]} />
+      <sphereGeometry args={[0.045, 10, 10]} />
       <meshBasicMaterial color={color} toneMapped={false} transparent opacity={0.85} />
     </instancedMesh>
   );
@@ -416,7 +455,7 @@ function RunningPulse({ from, to, active, color }: { from: THREE.Vector3; to: TH
   });
   return (
     <mesh ref={ref}>
-      <sphereGeometry args={[0.07, 8, 8]} />
+      <sphereGeometry args={[0.07, 10, 10]} />
       <meshBasicMaterial color={color} toneMapped={false} />
     </mesh>
   );
@@ -443,7 +482,7 @@ function EventPulse({ from, to, pulse }: { from: THREE.Vector3; to: THREE.Vector
   });
   return (
     <mesh ref={ref}>
-      <sphereGeometry args={[0.1, 8, 8]} />
+      <sphereGeometry args={[0.1, 10, 10]} />
       <meshBasicMaterial color="#ffffff" toneMapped={false} />
     </mesh>
   );
@@ -470,13 +509,13 @@ function ClusterLabel({ cluster, agent }: { cluster: ClusterData; agent: BrainAg
       {!hovered && (
         <Html distanceFactor={11} center occlude={false}>
           <div
-            className="pointer-events-none whitespace-nowrap rounded border px-1.5 py-1 text-[9px] backdrop-blur-sm"
-            style={{ borderColor: `${cluster.color}66`, background: "rgba(5,6,8,0.55)" }}
+            className="pointer-events-none whitespace-nowrap rounded-sm border border-white/10 border-t-2 bg-black/65 px-2 py-1 font-mono text-[9px] backdrop-blur-md"
+            style={{ borderTopColor: cluster.color }}
           >
             <div className="font-semibold uppercase tracking-wider" style={{ color: cluster.color }}>
-              {CORTEX_LABEL[cluster.agentId]}
+              {CORTEX_REGION_LABEL[cluster.agentId]}
             </div>
-            <div className="text-white/45">
+            <div className="text-white/70">
               {cluster.neuronCount} neurons · firing {firing}%
             </div>
           </div>
@@ -487,6 +526,7 @@ function ClusterLabel({ cluster, agent }: { cluster: ClusterData; agent: BrainAg
           <div className="pointer-events-none w-48 rounded-lg border border-neon-cyan/30 bg-void-950/90 px-3 py-2 text-center shadow-glow backdrop-blur">
             <p className="text-xs font-semibold text-white">{agent.descriptor.name}</p>
             <p className="mt-0.5 text-[10px] uppercase tracking-widest text-neon-cyan/70">{CORTEX_LABEL[cluster.agentId]}</p>
+            <p className="mt-0.5 text-[9px] uppercase tracking-widest text-white/35">{CORTEX_REGION_LABEL[cluster.agentId]} region</p>
             <p className="mt-0.5 text-[10px] uppercase tracking-widest text-white/40">{agent.status}</p>
             {agent.lastSummary && <p className="mt-1 text-[10px] text-white/50 line-clamp-3">{agent.lastSummary}</p>}
           </div>
@@ -552,7 +592,7 @@ function MemoryGraph({ anchor, memories }: { anchor: THREE.Vector3; memories: Me
       {memories.map((memory, i) => (
         <group key={memory.id} position={nodePositions[i]}>
           <mesh onPointerOver={() => setHoveredId(memory.id)} onPointerOut={() => setHoveredId((id) => (id === memory.id ? null : id))}>
-            <sphereGeometry args={[0.065, 8, 8]} />
+            <sphereGeometry args={[0.065, 10, 10]} />
             <meshBasicMaterial color={memoryNodeColor(memory.namespace)} toneMapped={false} transparent opacity={0.9} />
           </mesh>
           {hoveredId === memory.id && (
@@ -684,6 +724,9 @@ function PostFX() {
   return (
     <EffectComposer>
       <Bloom intensity={1.35} luminanceThreshold={0.08} luminanceSmoothing={0.8} mipmapBlur />
+      <ChromaticAberration offset={new THREE.Vector2(0.0006, 0.0006)} radialModulation={false} modulationOffset={0} />
+      <Noise opacity={0.035} blendFunction={BlendFunction.OVERLAY} premultiply />
+      <Vignette eskil={false} offset={0.28} darkness={0.85} />
     </EffectComposer>
   );
 }
