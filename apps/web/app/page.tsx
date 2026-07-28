@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentDescriptor, AgentStatus, CommanderNotification } from "@ai-commander/core";
-import { NeuralNetwork, type BrainPulse } from "@/components/neural-network";
+import { NeuralNetwork, type BrainPulse, type MemoryNode } from "@/components/neural-network";
 import { GlassPanel } from "@/components/glass-panel";
 import { LiveFeed } from "@/components/live-feed";
 import { CommandConsole } from "@/components/command-console";
@@ -50,6 +50,7 @@ export default function MissionControlPage() {
   const [kpis, setKpis] = useState<DashboardKpis | null>(null);
   const [liveShopify, setLiveShopify] = useState<LiveShopify | null>(null);
   const [pulses, setPulses] = useState<BrainPulse[]>([]);
+  const [memories, setMemories] = useState<MemoryNode[]>([]);
   const [clock, setClock] = useState("");
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -78,15 +79,32 @@ export default function MissionControlPage() {
     }
   }, []);
 
+  const fetchMemories = useCallback(async () => {
+    try {
+      const res = await fetch("/api/memory/graph", { cache: "no-store" });
+      if (res.ok) {
+        const data = (await res.json()) as { memories: MemoryNode[] };
+        setMemories(data.memories);
+      }
+    } catch {
+      // transient network error — next poll retries
+    }
+  }, []);
+
   useEffect(() => {
     fetchAgents();
     fetchKpis();
+    fetchMemories();
     const interval = setInterval(() => {
       fetchAgents();
       fetchKpis();
     }, 8000);
-    return () => clearInterval(interval);
-  }, [fetchAgents, fetchKpis]);
+    const memoryInterval = setInterval(fetchMemories, 20000);
+    return () => {
+      clearInterval(interval);
+      clearInterval(memoryInterval);
+    };
+  }, [fetchAgents, fetchKpis, fetchMemories]);
 
   useEffect(() => {
     const update = () => setClock(new Date().toUTCString().slice(17, 25));
@@ -130,6 +148,7 @@ export default function MissionControlPage() {
           <NeuralNetwork
             agents={agents.map((a) => ({ descriptor: a.descriptor, status: a.status, lastSummary: a.lastSummary }))}
             pulses={pulses}
+            memories={memories}
           />
         </div>
 
@@ -202,7 +221,12 @@ export default function MissionControlPage() {
         </div>
       </div>
 
-      <CommandConsole onMissionComplete={fetchAgents} />
+      <CommandConsole
+        onMissionComplete={() => {
+          fetchAgents();
+          fetchMemories();
+        }}
+      />
     </div>
   );
 }

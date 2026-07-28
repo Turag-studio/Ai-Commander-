@@ -22,6 +22,14 @@ export interface BrainPulse {
   receivedAt: number;
 }
 
+/** A single stored memory record, as rendered in the Memory Graph. */
+export interface MemoryNode {
+  id: string;
+  namespace: string;
+  text: string;
+  createdAt: string;
+}
+
 const SEVERITY_COLOR: Record<NotificationSeverity, string> = {
   info: "#00d4ff",
   success: "#ffd447",
@@ -191,6 +199,52 @@ function CommanderCore({ processing, pulse }: { processing: boolean; pulse?: Bra
       {/* Tight shimmering burst right at the core, distinct from the ambient background particle fields */}
       <Sparkles count={150} scale={[2.4, 2.4, 2.4]} size={3} speed={1.2} color="#ffffff" opacity={0.85} />
       <pointLight color={pulse ? SEVERITY_COLOR[pulse.severity] : "#00d4ff"} intensity={processing ? 17 : 12} distance={20} />
+    </group>
+  );
+}
+
+const THINKING_RING_COUNT = 3;
+const THINKING_CYCLE_SECONDS = 2.2;
+
+/**
+ * Explicit "the Commander is thinking" cue: concentric sonar-ping rings
+ * expanding out from the core and fading, only while a mission is
+ * actively processing — distinct from the core's constant idle breathing.
+ */
+function ThinkingWaves({ processing }: { processing: boolean }) {
+  const ringRefs = useRef<Array<THREE.Mesh | null>>([]);
+
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+    for (let i = 0; i < THINKING_RING_COUNT; i++) {
+      const mesh = ringRefs.current[i];
+      if (!mesh) continue;
+      if (!processing) {
+        mesh.visible = false;
+        continue;
+      }
+      const phase = ((t + i * (THINKING_CYCLE_SECONDS / THINKING_RING_COUNT)) % THINKING_CYCLE_SECONDS) / THINKING_CYCLE_SECONDS;
+      mesh.visible = true;
+      mesh.scale.setScalar(0.6 + phase * 6.5);
+      const material = mesh.material as THREE.MeshBasicMaterial;
+      material.opacity = Math.max(0, 0.4 * (1 - phase));
+    }
+  });
+
+  return (
+    <group>
+      {Array.from({ length: THINKING_RING_COUNT }).map((_, i) => (
+        <mesh
+          key={i}
+          ref={(el) => {
+            ringRefs.current[i] = el;
+          }}
+          visible={false}
+        >
+          <sphereGeometry args={[0.5, 20, 20]} />
+          <meshBasicMaterial color="#00eaff" wireframe transparent opacity={0} toneMapped={false} />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -439,7 +493,93 @@ function ClusterLabel({ cluster, agent }: { cluster: ClusterData; agent: BrainAg
   );
 }
 
-function NetworkSystem({ agents, pulses }: { agents: BrainAgentState[]; pulses: BrainPulse[] }) {
+const MEMORY_GRAPH_RADIUS = 1.3;
+
+/** Namespace strings match the AgentId that wrote them (research/content/analytics/finance); "general" has no agent, so it falls back to gold. */
+function memoryNodeColor(namespace: string): string {
+  return (CORTEX_COLOR as Record<string, string>)[namespace] ?? "#ffd447";
+}
+
+/**
+ * A real graph of the Memory Agent's actual stored records — distinct from
+ * the Memory cluster itself (which just represents the agent). Nodes are
+ * genuine memories (auto-stored after research/content/analytics/finance
+ * missions complete), colored by which agent wrote them, chained
+ * chronologically and hubbed off the Memory cluster's anchor point.
+ */
+function MemoryGraph({ anchor, memories }: { anchor: THREE.Vector3; memories: MemoryNode[] }) {
+  const center = useMemo(() => anchor.clone().multiplyScalar(1.55), [anchor]);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  const nodePositions = useMemo(() => {
+    return memories.map((_, i) => {
+      const angle = (i / Math.max(1, memories.length)) * Math.PI * 2;
+      const radius = MEMORY_GRAPH_RADIUS * (0.45 + 0.55 * ((i % 5) / 5));
+      return new THREE.Vector3(
+        center.x + Math.cos(angle) * radius,
+        center.y + Math.sin(angle) * radius * 0.7,
+        center.z + Math.sin(angle * 1.7) * radius * 0.5
+      );
+    });
+  }, [center, memories]);
+
+  const edgeGeometry = useMemo(() => {
+    const positions: number[] = [];
+    for (let i = 0; i < nodePositions.length; i++) {
+      positions.push(center.x, center.y, center.z, nodePositions[i].x, nodePositions[i].y, nodePositions[i].z);
+      if (i > 0) {
+        const prev = nodePositions[i - 1];
+        positions.push(prev.x, prev.y, prev.z, nodePositions[i].x, nodePositions[i].y, nodePositions[i].z);
+      }
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    return geom;
+  }, [center, nodePositions]);
+
+  useEffect(() => () => edgeGeometry.dispose(), [edgeGeometry]);
+
+  if (memories.length === 0) return null;
+
+  return (
+    <group>
+      <lineSegments geometry={edgeGeometry}>
+        <lineBasicMaterial color="#ffd447" transparent opacity={0.22} toneMapped={false} />
+      </lineSegments>
+      {memories.map((memory, i) => (
+        <group key={memory.id} position={nodePositions[i]}>
+          <mesh onPointerOver={() => setHoveredId(memory.id)} onPointerOut={() => setHoveredId((id) => (id === memory.id ? null : id))}>
+            <sphereGeometry args={[0.065, 8, 8]} />
+            <meshBasicMaterial color={memoryNodeColor(memory.namespace)} toneMapped={false} transparent opacity={0.9} />
+          </mesh>
+          {hoveredId === memory.id && (
+            <Html distanceFactor={9} center>
+              <div className="pointer-events-none w-52 rounded-lg border border-neon-amber/30 bg-void-950/90 px-3 py-2 text-center shadow-glow backdrop-blur">
+                <p className="text-[10px] uppercase tracking-widest text-neon-amber/80">{memory.namespace} memory</p>
+                <p className="mt-1 text-[10px] text-white/60 line-clamp-4">{memory.text}</p>
+              </div>
+            </Html>
+          )}
+        </group>
+      ))}
+      <Html position={center.toArray()} distanceFactor={12} center occlude={false}>
+        <div className="pointer-events-none whitespace-nowrap rounded border border-neon-amber/30 bg-void-950/50 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-neon-amber/80 backdrop-blur-sm">
+          Memory Graph · {memories.length}
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+function NetworkSystem({
+  agents,
+  pulses,
+  memories,
+}: {
+  agents: BrainAgentState[];
+  pulses: BrainPulse[];
+  memories: MemoryNode[];
+}) {
   const groupRef = useRef<THREE.Group>(null);
   const processing = agents.some((a) => a.status === "running");
   const core = useMemo(() => new THREE.Vector3(0, 0, 0), []);
@@ -471,6 +611,8 @@ function NetworkSystem({ agents, pulses }: { agents: BrainAgentState[]; pulses: 
     return map;
   }, [pulses]);
 
+  const memoryCluster = useMemo(() => clusters.find((c) => c.agentId === "memory"), [clusters]);
+
   useFrame(({ clock }) => {
     if (groupRef.current) groupRef.current.rotation.y = clock.getElapsedTime() * 0.008;
   });
@@ -478,6 +620,7 @@ function NetworkSystem({ agents, pulses }: { agents: BrainAgentState[]; pulses: 
   return (
     <group ref={groupRef}>
       <CommanderCore processing={processing} pulse={pulseByAgent.get("commander")} />
+      <ThinkingWaves processing={processing} />
       <Starburst core={core} />
       <NetworkEdges core={core} clusters={clusters} />
       {clusters.map((cluster, i) => (
@@ -498,6 +641,7 @@ function NetworkSystem({ agents, pulses }: { agents: BrainAgentState[]; pulses: 
       {clusters.map((cluster, i) => (
         <ClusterLabel key={`label-${cluster.agentId}`} cluster={cluster} agent={agents[i]} />
       ))}
+      {memoryCluster && <MemoryGraph anchor={memoryCluster.anchor} memories={memories} />}
     </group>
   );
 }
@@ -541,7 +685,15 @@ function PostFX() {
   );
 }
 
-export function BrainScene({ agents, pulses = [] }: { agents: BrainAgentState[]; pulses?: BrainPulse[] }) {
+export function BrainScene({
+  agents,
+  pulses = [],
+  memories = [],
+}: {
+  agents: BrainAgentState[];
+  pulses?: BrainPulse[];
+  memories?: MemoryNode[];
+}) {
   return (
     <Canvas camera={{ position: [0, 2, 16], fov: 50 }} dpr={[1, 1.5]}>
       <fogExp2 attach="fog" args={["#05060a", 0.028]} />
@@ -549,7 +701,7 @@ export function BrainScene({ agents, pulses = [] }: { agents: BrainAgentState[];
       <Sparkles count={700} scale={[26, 16, 26]} size={1.4} speed={0.2} color="#00d4ff" opacity={0.45} />
       <Sparkles count={500} scale={[28, 18, 28]} size={1.1} speed={0.12} color="#8a2be2" opacity={0.3} />
       <Sparkles count={300} scale={[24, 15, 24]} size={1} speed={0.15} color="#ff00a6" opacity={0.22} />
-      <NetworkSystem agents={agents} pulses={pulses} />
+      <NetworkSystem agents={agents} pulses={pulses} memories={memories} />
       <OrbitControls enablePan={false} minDistance={8} maxDistance={26} autoRotate autoRotateSpeed={0.08} />
       <PostFX />
     </Canvas>
