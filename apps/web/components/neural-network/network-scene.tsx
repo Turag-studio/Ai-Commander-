@@ -189,19 +189,20 @@ function CommanderCore({ processing, pulse }: { processing: boolean; pulse?: Bra
         <icosahedronGeometry args={[0.5, 2]} />
         <meshBasicMaterial ref={materialRef} color="#00eaff" wireframe transparent opacity={0.28} toneMapped={false} />
       </mesh>
-      <mesh>
-        <sphereGeometry args={[0.3, 16, 16]} />
+      {/* Stretched vertically, not a round ball — the reference core reads as a bright energy column/streak, not a glowing marble. */}
+      <mesh scale={[0.72, 2.3, 0.72]}>
+        <sphereGeometry args={[0.24, 16, 16]} />
         <meshBasicMaterial color="#ffffff" toneMapped={false} />
       </mesh>
       {/* A slim halo, not a wide one — bloom does the spreading. A large bright sphere here is what was blowing out into one giant blurry ball and swallowing the clusters. */}
-      <mesh ref={glowRef}>
-        <sphereGeometry args={[0.42, 16, 16]} />
+      <mesh ref={glowRef} scale={[1, 1.8, 1]}>
+        <sphereGeometry args={[0.36, 16, 16]} />
         <meshBasicMaterial color="#bfeeff" transparent opacity={0.12} toneMapped={false} />
       </mesh>
       {/* Vertical light beam through the core — thin and short enough to stay a sharp column under bloom, not a second blob */}
       <mesh>
-        <cylinderGeometry args={[0.02, 0.02, 2.1, 16]} />
-        <meshBasicMaterial color="#ffffff" transparent opacity={0.8} toneMapped={false} />
+        <cylinderGeometry args={[0.018, 0.018, 2.6, 16]} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0.85} toneMapped={false} />
       </mesh>
       {/* Tight shimmering burst right at the core, distinct from the ambient background particle fields */}
       <Sparkles count={150} scale={[2.4, 2.4, 2.4]} size={3} speed={1.2} color="#ffffff" opacity={0.85} />
@@ -756,14 +757,14 @@ export function BrainScene({
   memories?: MemoryNode[];
 }) {
   return (
-    <Canvas camera={{ position: [0, 1.2, 11.5], fov: 46 }} dpr={[1, 1.5]}>
+    <Canvas camera={{ position: [0, 1.2, 15], fov: 40 }} dpr={[1, 1.5]}>
       <fogExp2 attach="fog" args={["#05060a", 0.022]} />
       <ambientLight intensity={0.1} color="#5ad6ff" />
       <Sparkles count={700} scale={[28, 18, 28]} size={1.2} speed={0.2} color="#5ea8ff" opacity={0.4} />
       <Sparkles count={500} scale={[30, 20, 30]} size={1} speed={0.12} color="#a37bf0" opacity={0.28} />
       <Sparkles count={300} scale={[26, 17, 26]} size={0.9} speed={0.15} color="#e05fa8" opacity={0.2} />
       <NetworkSystem agents={agents} pulses={pulses} memories={memories} />
-      <OrbitControls enablePan={false} minDistance={7} maxDistance={20} autoRotate autoRotateSpeed={0.08} />
+      <OrbitControls enablePan={false} minDistance={9} maxDistance={24} autoRotate autoRotateSpeed={0.08} />
       <PostFX />
     </Canvas>
   );
