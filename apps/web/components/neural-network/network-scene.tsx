@@ -176,7 +176,7 @@ function CommanderCore({ processing, pulse }: { processing: boolean; pulse?: Bra
       meshRef.current.rotation.y = t * 0.15;
       meshRef.current.rotation.x = t * 0.08;
     }
-    if (glowRef.current) glowRef.current.scale.setScalar(pulseScale * 2.4);
+    if (glowRef.current) glowRef.current.scale.setScalar(pulseScale * 1.3);
     if (materialRef.current) {
       const target = pulse ? new THREE.Color(SEVERITY_COLOR[pulse.severity]) : baseColor;
       materialRef.current.color.lerpColors(baseColor, target, flash);
@@ -190,22 +190,18 @@ function CommanderCore({ processing, pulse }: { processing: boolean; pulse?: Bra
         <meshBasicMaterial ref={materialRef} color="#00eaff" wireframe transparent opacity={0.28} toneMapped={false} />
       </mesh>
       <mesh>
-        <sphereGeometry args={[0.4, 16, 16]} />
+        <sphereGeometry args={[0.3, 16, 16]} />
         <meshBasicMaterial color="#ffffff" toneMapped={false} />
       </mesh>
-      {/* Soft wide halo — the blown-out white core glow that dominates the reference footage */}
+      {/* A slim halo, not a wide one — bloom does the spreading. A large bright sphere here is what was blowing out into one giant blurry ball and swallowing the clusters. */}
       <mesh ref={glowRef}>
-        <sphereGeometry args={[0.75, 16, 16]} />
-        <meshBasicMaterial color="#bfeeff" transparent opacity={0.22} toneMapped={false} />
+        <sphereGeometry args={[0.42, 16, 16]} />
+        <meshBasicMaterial color="#bfeeff" transparent opacity={0.12} toneMapped={false} />
       </mesh>
-      {/* Vertical light beam through the core — the reference's dominant visual anchor, a blown-out lightning column */}
+      {/* Vertical light beam through the core — thin and short enough to stay a sharp column under bloom, not a second blob */}
       <mesh>
-        <cylinderGeometry args={[0.035, 0.035, 3.4, 16]} />
-        <meshBasicMaterial color="#ffffff" transparent opacity={0.85} toneMapped={false} />
-      </mesh>
-      <mesh>
-        <cylinderGeometry args={[0.09, 0.09, 3.4, 16]} />
-        <meshBasicMaterial color="#bfeeff" transparent opacity={0.25} toneMapped={false} />
+        <cylinderGeometry args={[0.02, 0.02, 2.1, 16]} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0.8} toneMapped={false} />
       </mesh>
       {/* Tight shimmering burst right at the core, distinct from the ambient background particle fields */}
       <Sparkles count={150} scale={[2.4, 2.4, 2.4]} size={3} speed={1.2} color="#ffffff" opacity={0.85} />
@@ -731,7 +727,7 @@ function PostFX() {
   if (!supported) return null;
   return (
     <EffectComposer>
-      <Bloom intensity={2.4} luminanceThreshold={0.02} luminanceSmoothing={0.55} mipmapBlur />
+      <Bloom intensity={1.5} luminanceThreshold={0.12} luminanceSmoothing={0.7} mipmapBlur />
       <ChromaticAberration offset={new THREE.Vector2(0.0006, 0.0006)} radialModulation={false} modulationOffset={0} />
       <Noise opacity={0.035} blendFunction={BlendFunction.OVERLAY} premultiply />
       <Vignette eskil={false} offset={0.22} darkness={0.9} />
