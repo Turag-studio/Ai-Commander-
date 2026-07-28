@@ -43,16 +43,22 @@ export const CORTEX_REGION_LABEL: Record<AgentId, string> = {
   memory: "Memory",
 };
 
-/** Neural color palette — each cluster gets one signature hue (never a rainbow gradient) so the network reads as distinct functional regions. */
+/**
+ * Neural color palette — each cluster gets one signature hue (never a
+ * rainbow gradient). Muted jewel tones rather than pure saturated neon,
+ * matching the reference footage's dim, glass-like filament colors — the
+ * brightness comes from bloom on the geometry, not from oversaturated hex
+ * values fighting the bloom for attention.
+ */
 export const NEURAL_PALETTE = {
-  blue: "#00d4ff",
-  cyan: "#00ffff",
-  purple: "#8a2be2",
-  pink: "#ff00a6",
-  green: "#00ff9d",
-  yellow: "#ffd700",
-  orange: "#ff8c1a",
-  red: "#ff3b5c",
+  blue: "#5ea8ff",
+  cyan: "#5fd6dd",
+  purple: "#a37bf0",
+  pink: "#e05fa8",
+  green: "#6fdb95",
+  yellow: "#e0c85f",
+  orange: "#e0975f",
+  red: "#e0625f",
 } as const;
 
 export const CORTEX_COLOR: Record<AgentId, string> = {

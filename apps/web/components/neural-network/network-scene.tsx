@@ -43,7 +43,9 @@ const SEVERITY_COLOR: Record<NotificationSeverity, string> = {
 // islands — matches the reference's dense, merged-together composition.
 const CLUSTER_ANCHOR_RADIUS = 2.5;
 const CLUSTER_NODE_RADIUS = 1.2;
-const CLUSTER_NODE_COUNT = 70;
+// Sparse on purpose — the reference reads as a delicate wireframe/energy cloud
+// with dark space showing through, not a solid mass of opaque dots.
+const CLUSTER_NODE_COUNT = 26;
 const CLUSTER_FLASH_MS = 1200;
 const CORE_FLASH_MS = 1800;
 const EVENT_TRAVEL_MS = 900;
@@ -185,24 +187,29 @@ function CommanderCore({ processing, pulse }: { processing: boolean; pulse?: Bra
     <group>
       <mesh ref={meshRef}>
         <icosahedronGeometry args={[0.5, 2]} />
-        <meshBasicMaterial ref={materialRef} color="#00eaff" wireframe transparent opacity={0.5} toneMapped={false} />
+        <meshBasicMaterial ref={materialRef} color="#00eaff" wireframe transparent opacity={0.28} toneMapped={false} />
       </mesh>
       <mesh>
-        <sphereGeometry args={[0.36, 16, 16]} />
+        <sphereGeometry args={[0.4, 16, 16]} />
         <meshBasicMaterial color="#ffffff" toneMapped={false} />
       </mesh>
+      {/* Soft wide halo — the blown-out white core glow that dominates the reference footage */}
       <mesh ref={glowRef}>
-        <sphereGeometry args={[0.5, 16, 16]} />
-        <meshBasicMaterial color="#00d4ff" transparent opacity={0.1} toneMapped={false} />
+        <sphereGeometry args={[0.75, 16, 16]} />
+        <meshBasicMaterial color="#bfeeff" transparent opacity={0.22} toneMapped={false} />
       </mesh>
-      {/* Vertical light beam through the core — bloom smears it into a bright streak from any angle */}
+      {/* Vertical light beam through the core — the reference's dominant visual anchor, a blown-out lightning column */}
       <mesh>
-        <cylinderGeometry args={[0.025, 0.025, 2.6, 16]} />
-        <meshBasicMaterial color="#e8fbff" transparent opacity={0.55} toneMapped={false} />
+        <cylinderGeometry args={[0.035, 0.035, 3.4, 16]} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0.85} toneMapped={false} />
+      </mesh>
+      <mesh>
+        <cylinderGeometry args={[0.09, 0.09, 3.4, 16]} />
+        <meshBasicMaterial color="#bfeeff" transparent opacity={0.25} toneMapped={false} />
       </mesh>
       {/* Tight shimmering burst right at the core, distinct from the ambient background particle fields */}
       <Sparkles count={150} scale={[2.4, 2.4, 2.4]} size={3} speed={1.2} color="#ffffff" opacity={0.85} />
-      <pointLight color={pulse ? SEVERITY_COLOR[pulse.severity] : "#00d4ff"} intensity={processing ? 17 : 12} distance={20} />
+      <pointLight color={pulse ? SEVERITY_COLOR[pulse.severity] : "#00d4ff"} intensity={processing ? 24 : 18} distance={22} />
     </group>
   );
 }
@@ -297,14 +304,15 @@ function NetworkEdges({ core, clusters }: { core: THREE.Vector3; clusters: Clust
 
     clusters.forEach((cluster) => {
       const color = new THREE.Color(cluster.color);
-      // Dense, chaotic web of crossing links inside each cluster — several offset "chords"
-      // per node, not just a ring, so it reads as a busy plexus rather than a clean loop.
+      // Sparse, wispy web of crossing links inside each cluster — a couple of offset
+      // "chords" per node, thinned further by a skip test, so dark space shows through
+      // and it reads as a delicate wireframe filament rather than a solid mass.
       const n = cluster.positions.length;
-      const offsets = [1, 2, Math.floor(n / 3), Math.floor(n / 5), Math.floor(n * 0.61)];
+      const offsets = [1, Math.floor(n / 3)];
       for (let i = 0; i < n; i++) {
         offsets.forEach((offset, offsetIndex) => {
           if (offset < 1) return;
-          if ((i + offsetIndex) % (offsetIndex + 2) !== 0) return;
+          if ((i + offsetIndex) % (offsetIndex + 3) !== 0) return;
           addEdge(cluster.positions[i], cluster.positions[(i + offset) % n], color);
         });
       }
@@ -321,7 +329,7 @@ function NetworkEdges({ core, clusters }: { core: THREE.Vector3; clusters: Clust
   return (
     <group>
       <lineSegments geometry={geometry}>
-        <lineBasicMaterial vertexColors transparent opacity={0.32} toneMapped={false} />
+        <lineBasicMaterial vertexColors transparent opacity={0.4} toneMapped={false} />
       </lineSegments>
       {clusters.map((cluster, i) => (
         <ClusterSpoke key={cluster.agentId} core={core} anchor={cluster.anchor} color={cluster.color} seed={i + 1} />
@@ -330,9 +338,9 @@ function NetworkEdges({ core, clusters }: { core: THREE.Vector3; clusters: Clust
   );
 }
 
-const STARBURST_RAY_COUNT = 44;
-const STARBURST_MIN_RADIUS = 4.4;
-const STARBURST_MAX_RADIUS = 9.5;
+const STARBURST_RAY_COUNT = 64;
+const STARBURST_MIN_RADIUS = 4.2;
+const STARBURST_MAX_RADIUS = 11;
 
 /**
  * Dozens of fine rays shooting from the core out past the clusters to the
@@ -348,11 +356,11 @@ function StarburstRay({ points, seed }: { points: [number, number, number][]; se
   useFrame(({ clock }) => {
     if (!lineRef.current) return;
     const t = clock.getElapsedTime();
-    const flicker = 0.55 + 0.45 * Math.sin(t * 6 + flickerSeed) * Math.sin(t * 1.8 + flickerSeed * 1.4);
-    lineRef.current.material.opacity = 0.3 * Math.max(0, flicker);
+    const flicker = 0.6 + 0.4 * Math.sin(t * 6 + flickerSeed) * Math.sin(t * 1.8 + flickerSeed * 1.4);
+    lineRef.current.material.opacity = 0.55 * Math.max(0, flicker);
   });
 
-  return <Line ref={lineRef as never} points={points} color="#bfe9ff" lineWidth={1.4} transparent opacity={0.3} toneMapped={false} />;
+  return <Line ref={lineRef as never} points={points} color="#dff3ff" lineWidth={1.1} transparent opacity={0.55} toneMapped={false} />;
 }
 
 function Starburst({ core }: { core: THREE.Vector3 }) {
@@ -368,10 +376,10 @@ function Starburst({ core }: { core: THREE.Vector3 }) {
     return ends;
   }, []);
 
-  // Sharper zigzag (more segments, wider jitter) than a subtle scratch — this is the
-  // signature "lightning ray" read, so each bolt needs a visible jagged silhouette.
+  // Long, gently sweeping spikes rather than a jagged zigzag — the reference's rays
+  // curve softly outward from the core, closer to a dandelion/sparkler than a bolt.
   const rayPaths = useMemo(
-    () => rayEnds.map((end, i) => buildJaggedPath(core, end, i + 500, 6, 0.16).map((p) => p.toArray() as [number, number, number])),
+    () => rayEnds.map((end, i) => buildJaggedPath(core, end, i + 500, 4, 0.05).map((p) => p.toArray() as [number, number, number])),
     [core, rayEnds]
   );
 
@@ -399,14 +407,14 @@ function Starburst({ core }: { core: THREE.Vector3 }) {
         <StarburstRay key={i} points={points} seed={i} />
       ))}
       <instancedMesh ref={sparkRef} args={[undefined, undefined, rayEnds.length]}>
-        <sphereGeometry args={[0.055, 8, 8]} />
+        <sphereGeometry args={[0.07, 8, 8]} />
         <meshBasicMaterial color="#ffffff" toneMapped={false} />
       </instancedMesh>
     </group>
   );
 }
 
-/** Every node in one cluster, instanced for performance — hundreds of nodes in a single draw call. */
+/** Every node in one cluster, instanced for performance — sparse and small, a scatter of points rather than a solid mass. */
 function ClusterNodes({ positions, color, active, pulse }: { positions: THREE.Vector3[]; color: string; active: boolean; pulse?: BrainPulse }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
@@ -434,8 +442,8 @@ function ClusterNodes({ positions, color, active, pulse }: { positions: THREE.Ve
 
   return (
     <instancedMesh ref={meshRef} args={[undefined, undefined, positions.length]}>
-      <sphereGeometry args={[0.045, 10, 10]} />
-      <meshBasicMaterial color={color} toneMapped={false} transparent opacity={0.85} />
+      <sphereGeometry args={[0.055, 10, 10]} />
+      <meshBasicMaterial color={color} toneMapped={false} transparent opacity={0.8} />
     </instancedMesh>
   );
 }
@@ -723,10 +731,10 @@ function PostFX() {
   if (!supported) return null;
   return (
     <EffectComposer>
-      <Bloom intensity={1.35} luminanceThreshold={0.08} luminanceSmoothing={0.8} mipmapBlur />
+      <Bloom intensity={2.4} luminanceThreshold={0.02} luminanceSmoothing={0.55} mipmapBlur />
       <ChromaticAberration offset={new THREE.Vector2(0.0006, 0.0006)} radialModulation={false} modulationOffset={0} />
       <Noise opacity={0.035} blendFunction={BlendFunction.OVERLAY} premultiply />
-      <Vignette eskil={false} offset={0.28} darkness={0.85} />
+      <Vignette eskil={false} offset={0.22} darkness={0.9} />
     </EffectComposer>
   );
 }
@@ -741,14 +749,14 @@ export function BrainScene({
   memories?: MemoryNode[];
 }) {
   return (
-    <Canvas camera={{ position: [0, 1.2, 9.5], fov: 50 }} dpr={[1, 1.5]}>
-      <fogExp2 attach="fog" args={["#05060a", 0.028]} />
-      <ambientLight intensity={0.12} color="#5ad6ff" />
-      <Sparkles count={700} scale={[26, 16, 26]} size={1.4} speed={0.2} color="#00d4ff" opacity={0.45} />
-      <Sparkles count={500} scale={[28, 18, 28]} size={1.1} speed={0.12} color="#8a2be2" opacity={0.3} />
-      <Sparkles count={300} scale={[24, 15, 24]} size={1} speed={0.15} color="#ff00a6" opacity={0.22} />
+    <Canvas camera={{ position: [0, 1.2, 11.5], fov: 46 }} dpr={[1, 1.5]}>
+      <fogExp2 attach="fog" args={["#05060a", 0.022]} />
+      <ambientLight intensity={0.1} color="#5ad6ff" />
+      <Sparkles count={700} scale={[28, 18, 28]} size={1.2} speed={0.2} color="#5ea8ff" opacity={0.4} />
+      <Sparkles count={500} scale={[30, 20, 30]} size={1} speed={0.12} color="#a37bf0" opacity={0.28} />
+      <Sparkles count={300} scale={[26, 17, 26]} size={0.9} speed={0.15} color="#e05fa8" opacity={0.2} />
       <NetworkSystem agents={agents} pulses={pulses} memories={memories} />
-      <OrbitControls enablePan={false} minDistance={5} maxDistance={16} autoRotate autoRotateSpeed={0.08} />
+      <OrbitControls enablePan={false} minDistance={7} maxDistance={20} autoRotate autoRotateSpeed={0.08} />
       <PostFX />
     </Canvas>
   );
