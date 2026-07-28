@@ -37,7 +37,10 @@ const SEVERITY_COLOR: Record<NotificationSeverity, string> = {
   critical: "#ff3b5c",
 };
 
-const CLUSTER_ANCHOR_RADIUS = 5.6;
+// Deliberately smaller than CLUSTER_NODE_RADIUS so neighboring clusters overlap
+// into one cohesive mass around the core, instead of sitting apart as separate
+// islands — matches the reference's dense, merged-together composition.
+const CLUSTER_ANCHOR_RADIUS = 2.5;
 const CLUSTER_NODE_RADIUS = 1.2;
 const CLUSTER_NODE_COUNT = 70;
 const CLUSTER_FLASH_MS = 1200;
@@ -296,8 +299,8 @@ function NetworkEdges({ core, clusters }: { core: THREE.Vector3; clusters: Clust
 }
 
 const STARBURST_RAY_COUNT = 44;
-const STARBURST_MIN_RADIUS = 7.5;
-const STARBURST_MAX_RADIUS = 13.5;
+const STARBURST_MIN_RADIUS = 4.4;
+const STARBURST_MAX_RADIUS = 9.5;
 
 /**
  * Dozens of fine rays shooting from the core out past the clusters to the
@@ -695,14 +698,14 @@ export function BrainScene({
   memories?: MemoryNode[];
 }) {
   return (
-    <Canvas camera={{ position: [0, 2, 16], fov: 50 }} dpr={[1, 1.5]}>
+    <Canvas camera={{ position: [0, 1.2, 9.5], fov: 50 }} dpr={[1, 1.5]}>
       <fogExp2 attach="fog" args={["#05060a", 0.028]} />
       <ambientLight intensity={0.12} color="#5ad6ff" />
       <Sparkles count={700} scale={[26, 16, 26]} size={1.4} speed={0.2} color="#00d4ff" opacity={0.45} />
       <Sparkles count={500} scale={[28, 18, 28]} size={1.1} speed={0.12} color="#8a2be2" opacity={0.3} />
       <Sparkles count={300} scale={[24, 15, 24]} size={1} speed={0.15} color="#ff00a6" opacity={0.22} />
       <NetworkSystem agents={agents} pulses={pulses} memories={memories} />
-      <OrbitControls enablePan={false} minDistance={8} maxDistance={26} autoRotate autoRotateSpeed={0.08} />
+      <OrbitControls enablePan={false} minDistance={5} maxDistance={16} autoRotate autoRotateSpeed={0.08} />
       <PostFX />
     </Canvas>
   );
