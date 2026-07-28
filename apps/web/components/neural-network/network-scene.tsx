@@ -1,7 +1,7 @@
 "use client";
 
 import { Html, Line, OrbitControls, Sparkles } from "@react-three/drei";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Bloom, ChromaticAberration, EffectComposer, Noise, Vignette } from "@react-three/postprocessing";
 import { BlendFunction } from "postprocessing";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -506,7 +506,18 @@ function ClusterLabel({ cluster, agent }: { cluster: ClusterData; agent: BrainAg
   const firing = firingRateFor(cluster, agent.status);
   return (
     <group position={cluster.anchor}>
-      <mesh onPointerOver={() => setHovered(true)} onPointerOut={() => setHovered(false)} visible={false}>
+      {/* Clusters overlap in 3D space by design, so without stopPropagation a single cursor position can land inside several hit-spheres at once and pop multiple hover cards simultaneously — only the nearest one should react. */}
+      <mesh
+        onPointerOver={(e: ThreeEvent<PointerEvent>) => {
+          e.stopPropagation();
+          setHovered(true);
+        }}
+        onPointerOut={(e: ThreeEvent<PointerEvent>) => {
+          e.stopPropagation();
+          setHovered(false);
+        }}
+        visible={false}
+      >
         <sphereGeometry args={[CLUSTER_NODE_RADIUS * 1.15, 8, 8]} />
         <meshBasicMaterial />
       </mesh>
