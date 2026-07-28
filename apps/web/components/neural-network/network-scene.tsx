@@ -62,6 +62,26 @@ function fibonacciSphere(count: number, radius: number): THREE.Vector3[] {
   return points;
 }
 
+/**
+ * A flattened, portrait-oriented cloud instead of a full sphere — biases
+ * clusters toward camera-facing so most of them are visible at once from
+ * the default angle, like a fixed hero shot, instead of wrapping evenly
+ * around a globe where half are always behind the core.
+ */
+function frontalCloud(count: number, radiusXY: number, depthZ: number): THREE.Vector3[] {
+  const points: THREE.Vector3[] = [];
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < count; i++) {
+    const y = 1 - (i / Math.max(1, count - 1)) * 2;
+    const radiusAtY = Math.sqrt(Math.max(0, 1 - y * y));
+    const theta = goldenAngle * i;
+    const x = Math.cos(theta) * radiusAtY;
+    const zNorm = Math.sin(theta) * radiusAtY;
+    points.push(new THREE.Vector3(x * radiusXY, y * radiusXY * 0.92, zNorm * depthZ));
+  }
+  return points;
+}
+
 /** A jagged, lightning-like polyline between two points instead of a smooth line — the long spokes reaching out to each cluster should read as electric branches, not clean cables. */
 function buildJaggedPath(a: THREE.Vector3, b: THREE.Vector3, seed: number, segments = 5, jitter = 0.22): THREE.Vector3[] {
   const rand = mulberry32(seed);
@@ -109,7 +129,16 @@ interface ClusterData {
   anchor: THREE.Vector3;
   positions: THREE.Vector3[];
   color: string;
+  neuronCount: number;
+  baselineFiring: number;
 }
+
+const STATUS_FIRING_RATE: Record<AgentStatus, [number, number]> = {
+  idle: [0.3, 1.2],
+  completed: [0.4, 1.4],
+  running: [55, 92],
+  error: [2, 8],
+};
 
 /** The AI consciousness at the center — every task begins and ends here. */
 function CommanderCore({ processing, pulse }: { processing: boolean; pulse?: BrainPulse }) {
@@ -144,7 +173,7 @@ function CommanderCore({ processing, pulse }: { processing: boolean; pulse?: Bra
     <group>
       <mesh ref={meshRef}>
         <icosahedronGeometry args={[0.5, 2]} />
-        <meshBasicMaterial ref={materialRef} color="#00eaff" wireframe toneMapped={false} />
+        <meshBasicMaterial ref={materialRef} color="#00eaff" wireframe transparent opacity={0.5} toneMapped={false} />
       </mesh>
       <mesh>
         <sphereGeometry args={[0.36, 16, 16]} />
@@ -184,11 +213,16 @@ function NetworkEdges({ core, clusters }: { core: THREE.Vector3; clusters: Clust
       const color = new THREE.Color(cluster.color);
       // The long branch reaching out to each cluster reads as an electric lightning bolt.
       addJaggedEdge(core, cluster.anchor, color, clusterIndex + 1);
+      // Dense, chaotic web of crossing links inside each cluster — several offset "chords"
+      // per node, not just a ring, so it reads as a busy plexus rather than a clean loop.
       const n = cluster.positions.length;
-      const chord = Math.floor(n / 3);
+      const offsets = [1, 2, Math.floor(n / 3), Math.floor(n / 5), Math.floor(n * 0.61)];
       for (let i = 0; i < n; i++) {
-        addEdge(cluster.positions[i], cluster.positions[(i + 1) % n], color);
-        if (i % 5 === 0) addEdge(cluster.positions[i], cluster.positions[(i + chord) % n], color);
+        offsets.forEach((offset, offsetIndex) => {
+          if (offset < 1) return;
+          if ((i + offsetIndex) % (offsetIndex + 2) !== 0) return;
+          addEdge(cluster.positions[i], cluster.positions[(i + offset) % n], color);
+        });
       }
     });
 
@@ -358,9 +392,18 @@ function EventPulse({ from, to, pulse }: { from: THREE.Vector3; to: THREE.Vector
   );
 }
 
+/** Deterministic per-status firing rate, seeded per cluster so idle clusters each settle on their own quiet baseline instead of all showing the same number. */
+function firingRateFor(cluster: ClusterData, status: AgentStatus): string {
+  const [lo, hi] = STATUS_FIRING_RATE[status];
+  if (status === "idle" || status === "completed") return cluster.baselineFiring.toFixed(1);
+  const rand = mulberry32(cluster.neuronCount + (status === "running" ? 900 : 400));
+  return (lo + rand() * (hi - lo)).toFixed(1);
+}
+
 /** Hover hit-target + persistent compact label + detail card for one cluster. */
 function ClusterLabel({ cluster, agent }: { cluster: ClusterData; agent: BrainAgentState }) {
   const [hovered, setHovered] = useState(false);
+  const firing = firingRateFor(cluster, agent.status);
   return (
     <group position={cluster.anchor}>
       <mesh onPointerOver={() => setHovered(true)} onPointerOut={() => setHovered(false)} visible={false}>
@@ -370,10 +413,15 @@ function ClusterLabel({ cluster, agent }: { cluster: ClusterData; agent: BrainAg
       {!hovered && (
         <Html distanceFactor={11} center occlude={false}>
           <div
-            className="pointer-events-none whitespace-nowrap rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-wider backdrop-blur-sm"
-            style={{ borderColor: `${cluster.color}55`, color: `${cluster.color}cc`, background: "rgba(5,6,8,0.45)" }}
+            className="pointer-events-none whitespace-nowrap rounded border px-1.5 py-1 text-[9px] backdrop-blur-sm"
+            style={{ borderColor: `${cluster.color}66`, background: "rgba(5,6,8,0.55)" }}
           >
-            {CORTEX_LABEL[cluster.agentId]}
+            <div className="font-semibold uppercase tracking-wider" style={{ color: cluster.color }}>
+              {CORTEX_LABEL[cluster.agentId]}
+            </div>
+            <div className="text-white/45">
+              {cluster.neuronCount} neurons · firing {firing}%
+            </div>
           </div>
         </Html>
       )}
@@ -395,16 +443,21 @@ function NetworkSystem({ agents, pulses }: { agents: BrainAgentState[]; pulses: 
   const groupRef = useRef<THREE.Group>(null);
   const processing = agents.some((a) => a.status === "running");
   const core = useMemo(() => new THREE.Vector3(0, 0, 0), []);
-  const anchors = useMemo(() => fibonacciSphere(agents.length, CLUSTER_ANCHOR_RADIUS), [agents.length]);
+  const anchors = useMemo(() => frontalCloud(agents.length, CLUSTER_ANCHOR_RADIUS, CLUSTER_ANCHOR_RADIUS * 0.4), [agents.length]);
 
   const clusters = useMemo<ClusterData[]>(
     () =>
-      agents.map((agent, i) => ({
-        agentId: agent.descriptor.id,
-        anchor: anchors[i],
-        positions: buildClusterNodes(anchors[i], CLUSTER_NODE_COUNT, CLUSTER_NODE_RADIUS, i + 1),
-        color: CORTEX_COLOR[agent.descriptor.id],
-      })),
+      agents.map((agent, i) => {
+        const rand = mulberry32(i + 1);
+        return {
+          agentId: agent.descriptor.id,
+          anchor: anchors[i],
+          positions: buildClusterNodes(anchors[i], CLUSTER_NODE_COUNT, CLUSTER_NODE_RADIUS, i + 1),
+          color: CORTEX_COLOR[agent.descriptor.id],
+          neuronCount: 120 + Math.floor(rand() * 160),
+          baselineFiring: 0.3 + rand() * 0.9,
+        };
+      }),
     [agents, anchors]
   );
 
@@ -419,7 +472,7 @@ function NetworkSystem({ agents, pulses }: { agents: BrainAgentState[]; pulses: 
   }, [pulses]);
 
   useFrame(({ clock }) => {
-    if (groupRef.current) groupRef.current.rotation.y = clock.getElapsedTime() * 0.025;
+    if (groupRef.current) groupRef.current.rotation.y = clock.getElapsedTime() * 0.008;
   });
 
   return (
@@ -497,7 +550,7 @@ export function BrainScene({ agents, pulses = [] }: { agents: BrainAgentState[];
       <Sparkles count={500} scale={[28, 18, 28]} size={1.1} speed={0.12} color="#8a2be2" opacity={0.3} />
       <Sparkles count={300} scale={[24, 15, 24]} size={1} speed={0.15} color="#ff00a6" opacity={0.22} />
       <NetworkSystem agents={agents} pulses={pulses} />
-      <OrbitControls enablePan={false} minDistance={8} maxDistance={26} autoRotate autoRotateSpeed={0.3} />
+      <OrbitControls enablePan={false} minDistance={8} maxDistance={26} autoRotate autoRotateSpeed={0.08} />
       <PostFX />
     </Canvas>
   );
